@@ -138,6 +138,25 @@ td.n,th.n{text-align:right;font-family:var(--f-mono);font-variant-numeric:tabula
 .donut{display:flex;gap:18px;align-items:center;flex-wrap:wrap}
 .donut .legend{flex-direction:column;gap:6px;font-size:12.5px}
 svg text{fill:var(--muted);font-family:var(--f-mono);font-size:10px}
+.p-risk{background:var(--crit-soft);color:#B8463A;box-shadow:inset 0 0 0 1px #F2BDB6}
+.p-crit{background:#F9D9D5;color:#A8372C;box-shadow:inset 0 0 0 1px #EDA79E}
+.risk{cursor:help}
+.risk:hover,.risk:focus-visible{box-shadow:inset 0 0 0 1px var(--crit)}
+.ri{font-style:normal;font-family:var(--f);font-weight:700;font-size:9px;width:13px;height:13px;border-radius:50%;background:currentColor;color:#fff;display:inline-grid;place-items:center;margin-left:4px}
+.ri{color:inherit;background:transparent;border:1px solid currentColor}
+.hdr-r{display:flex;align-items:center;gap:10px;flex:0 0 auto}
+.needs{font-size:11.5px;font-weight:600;color:#fff;background:var(--crit);border-radius:999px;padding:2px 9px;cursor:help;white-space:nowrap}
+.needs::before{content:"! ";font-weight:800}
+.card.atrisk{border-color:#F0C3BD}
+.kpibox.risk{background:#FDF1EF;cursor:help}
+.kpibox.risk .num{border-left-color:var(--crit)}
+.kpibox.risk::after{content:"Action needed · hover for next steps";font-size:11.5px;color:#B8463A;font-weight:600;margin-top:4px}
+.gpop{position:fixed;z-index:60;background:var(--surface);border:1px solid var(--line);border-left:4px solid var(--crit);border-radius:8px;box-shadow:0 10px 30px rgba(20,30,45,.18);padding:12px 14px;font-size:13px;color:var(--fg);max-height:70vh;overflow:auto}
+.gpop .gp-h{font-weight:700;color:#A8372C;display:flex;align-items:center;gap:8px;margin-bottom:6px}
+.gp-dot{width:8px;height:8px;border-radius:50%;background:var(--crit);flex:0 0 auto}
+.gpop .gp-why{margin:0 0 8px;color:#3E4955}
+.gpop .gp-s{font-size:11.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);font-weight:700;margin-bottom:4px}
+.gpop ol{margin:0;padding-left:18px;display:flex;flex-direction:column;gap:4px}
 .artlink{color:inherit;text-decoration:underline;text-decoration-style:dotted;text-underline-offset:2px;text-decoration-color:var(--accent)}
 .artlink:hover{color:var(--accent-2);text-decoration-style:solid}
 .foot{color:var(--muted);font-size:12px;border-top:1px solid var(--line);padding-top:12px;margin:0}
@@ -198,6 +217,7 @@ svg text{fill:var(--muted);font-family:var(--f-mono);font-size:10px}
     <p class="foot">Article numbers link to the official text of the Act on <a class="artlink" href="https://www.meity.gov.in/static/uploads/2024/06/2bf1f0e9f04e6fb4f8fef35e82c42aa5.pdf" target="_blank" rel="noopener">meity.gov.in</a>, opened at the relevant page. Article references are to the Digital Personal Data Protection Act, 2023 and the DPDP Rules, 2025, summarised in plain language. Severity uses Securiti’s 1–5 scale (5 = Very High). Breach progress codes 1–3 are shown as stages, with 3 treated as closed; confirm against your tenant. Not legal advice.</p>
   </main>
 </div>
+<div class="gpop" id="gpop" role="tooltip" hidden></div>
 <script>
 
 (function(){
@@ -488,7 +508,8 @@ function metrics(){
 
 /* ================= Rendering helpers ================= */
 const COL={ok:"var(--ok)",warn:"var(--warn)",med:"var(--med)",crit:"var(--crit)",info:"var(--accent)",mute:"var(--muted)",vlow:"var(--vlow)",purple:"var(--purple)"};
-const pill=(s,t)=>`<span class="pill p-${s}">${esc(t)}</span>`;
+const pill=(s,t)=>{const risky=s==="crit"||s==="warn"||/^Review$/.test(String(t));if(!risky||typeof guideFor!=="function")return `<span class="pill p-${s}">${esc(t)}</span>`;
+  return `<span class="pill ${s==="crit"?"p-crit":"p-risk"} risk" tabindex="0" role="button" aria-label="${esc(t)}: show next steps" data-g="${gid(guideFor(String(t)))}">${esc(t)}<i class="ri" aria-hidden="true">i</i></span>`;};
 function hbars(items,{label,value,max,color}){if(!items.length)return empty();const mx=max||Math.max(...items.map(i=>i[value]),1);
   return `<div class="hbars">${items.map(i=>`<div class="hb"><span title="${esc(i[label])}">${esc(i[label])}</span><div class="track"><i style="width:${i[value]/mx*100}%;background:${COL[(color&&color(i))||"info"]}"></i></div><span class="v">${fmt(i[value])}</span></div>`).join("")}</div>`;}
 function stacked(items,{label,series,colors}){if(!items.length)return empty();const mx=Math.max(...items.map(i=>series.reduce((a,s)=>a+(i[s]||0),0)),1);
@@ -537,7 +558,7 @@ const WIDGETS=[
  {id:"dsr_trend",t:"DSR received vs closed per week",p:["DPO","CIO"],w:6,deps:["dsr_tickets"],html:M=>M.dsr&&line(M.dsr.weeks,"week",[{k:"received",l:"Received",c:"info"},{k:"closed",l:"Closed",c:"ok",dash:1}])},
  {id:"consent_status",t:"Consent records by status",p:["DPO"],w:4,deps:["consent_by_activity"],html:M=>M.consent&&M.consent.act&&donut(sortE(M.consent.act).map(([k,v])=>({label:k.replace("_"," ").toLowerCase(),key:k,n:v})),{label:"label",value:"n",color:i=>({GRANTED:"ok",DECLINED:"warn",WITHDRAWN:"crit",PENDING:"info"}[i.key]||"mute")})},
  {id:"consent_purpose",t:"Consent by processing purpose",p:["DPO"],w:8,deps:["consent_by_purpose_activity"],html:M=>M.consent&&M.consent.purpose&&stacked(M.consent.purpose,{label:"purpose",series:["GRANTED","DECLINED","WITHDRAWN","PENDING"],colors:["ok","warn","crit","info"]})},
- {id:"consent_country",t:"Consent records by country",p:["DPO","CIO"],w:4,deps:["consent_by_country"],html:M=>M.consent&&M.consent.country&&(hbars(M.consent.country.slice(0,8),{label:"c",value:"n",color:i=>i.c==="IN"?"crit":"info"})+`<div class="hint">India (IN): ${fmt((M.consent.country.find(x=>x.c==="IN")||{}).n||0)} records</div>`)},
+ {id:"consent_country",t:"Consent records by country",p:["DPO","CIO"],w:4,deps:["consent_by_country"],html:M=>M.consent&&M.consent.country&&(hbars(M.consent.country.slice(0,8),{label:"c",value:"n",color:i=>i.c==="IN"?"ok":"info"})+`<div class="hint">India (IN): ${fmt((M.consent.country.find(x=>x.c==="IN")||{}).n||0)} records</div>`)},
  {id:"purposes",t:"Processing purposes by category",p:["DPO"],w:4,deps:["consent_purposes"],html:M=>M.purposes&&hbars(M.purposes.map(([k,v])=>({label:k,n:v})),{label:"label",value:"n"})},
  {id:"pd_cat",t:"Personal data columns by category",p:["CISO","CIO"],w:6,deps:["classif_by_attribute","pd_attributes"],html:M=>M.disc&&hbars(M.disc.cats.map(([k,v])=>({label:k,n:v})),{label:"label",value:"n",color:i=>/Government|Financial|Medical|Health/.test(i.label)?"crit":"info"})},
  {id:"risk_level",t:"Open risks by level",p:["CISO","DPO","CIO"],w:4,deps:["risk_by_level"],html:M=>M.risk&&hbars(M.risk.level,{label:"level",value:"n",color:i=>({"VERY HIGH":"crit",HIGH:"warn",MEDIUM:"med",LOW:"ok","VERY LOW":"ok"}[i.level]||"mute")})+`<div class="relevance"><b>Why it matters:</b> these risks come from your assessments and the Securiti risk register. Very High and High risks usually mean a missing or weak security safeguard, which Article 8(5) makes a legal duty. Failing to take reasonable safeguards carries the largest penalty in the Act’s Schedule, up to ₹250 crore. Close or formally accept them before May 2027.</div>`},
@@ -825,6 +846,88 @@ function renderTimeline(){
   $("#timeline").innerHTML=`<div><div class="tl-head"><h2>DPDP implementation timeline</h2><span class="hint">Phased roll-out under the DPDP Rules, 2025</span></div><div class="tl-track">${phases}</div></div><div class="counters">${counters}</div>`;
 }
 
+
+/* ================= Risk guidance: what to do next, shown on hover / focus / tap ================= */
+// Pill-level guidance, matched on the pill text (first match wins)
+const P_GUIDE=[
+ {re:/^Mask now$/i,t:"Mask this identifier now",why:"Unmasked Aadhaar, PAN or card numbers are the data most often abused for identity fraud and financial theft. If any of these columns leak, it is a notifiable personal data breach under Article 8(6), and failing to take reasonable safeguards can draw a penalty of up to ₹250 crore (Schedule). The Aadhaar Act also requires Aadhaar numbers to be stored in a vault and shown masked.",steps:["Apply a Securiti masking or tokenisation policy to these columns (Data Access Governance → Masking policies)","Show only the last 4 digits in apps, reports and logs","Move Aadhaar numbers into an Aadhaar Data Vault and replace them with reference tokens","Restrict read access to the few roles that need the full value, then re-scan to confirm"]},
+ {re:/^Review$/i,t:"Review this data",why:"This personal data is not masked. It is lower risk than government IDs, but large volumes of contact or financial data still widen the impact of a breach and must be protected under Article 8(5).",steps:["Confirm each store has a business purpose for the data (Article 4)","Mask or encrypt it where it is not needed in clear text","Delete copies that no longer serve their purpose (Article 8(7))"]},
+ {re:/overdue/i,t:"This DSR is overdue",why:"The data principal’s request has passed its deadline. Late responses can lead to a complaint to the Data Protection Board and show the rights process is not working (Articles 11–14).",steps:["Assign an owner today and tell the requester when they will hear back","Clear blocked subtasks: identity checks, system searches, approvals","For erasure, confirm processors and backups are covered","Find why it slipped and fix the workflow so it does not recur"]},
+ {re:/^\d+ d$/,t:"DSR deadline is close",why:"This request is due within a week. Missing it puts the organisation in breach of its response commitments under Articles 11–14.",steps:["Check every system search is complete","Prepare the response pack now so approval does not delay it","Escalate any blocked step to the DSR owner"]},
+ {re:/h left$/i,t:"Board report window is open",why:"The DPDP Rules require a detailed report to the Data Protection Board within 72 hours of becoming aware of a breach. Missing the window is a separate violation, with penalties of up to ₹200 crore (Schedule).",steps:["Confirm facts: what data, how many people, which systems","Contain the incident and preserve evidence","Send the detailed report to the Board before the clock runs out","Inform affected data principals without delay (Article 8(6))"]},
+ {re:/^Gap$/i,t:"Consent gap",why:"Processing for this purpose may not rest on valid consent or a legitimate use (Articles 4, 6). Data processed without a lawful ground must stop, and the notice may be out of date (Article 5).",steps:["Re-issue the notice with this purpose clearly described","Collect fresh consent, or document the legitimate use relied on","Stop processing for anyone who withdrew, within hours not days"]},
+ {re:/^Exposed$/i,t:"Penalty exposure",why:"Open gaps exist under this obligation. The Schedule sets the maximum penalty per instance; the Board weighs how serious and how long the failure was.",steps:["List the open gaps and owners behind this row","Close the quickest-to-fix items first","Record evidence of fixes for the Board and auditors"]},
+ {re:/^Yes$/i,t:"Toxic combination",why:"This AI model reads sensitive data and also has open misconfigurations. Either alone is tolerable; together they are a direct path from a setting mistake to a personal data breach.",steps:["Fix the open misconfigurations on the model and its data sources first","Remove sensitive fields from training or retrieval data that do not need them","Restrict who can invoke the model and log its access to data"]},
+ {re:/Exposure|Escalation|Unprotected/i,t:"High-impact risk factor",why:"This test flags assets that are exposed externally, can be used to gain higher privileges, or hold unprotected data — the most common starting points of a breach.",steps:["Open the control test in Securiti and fix the failing assets in order of severity","Check whether those assets hold personal data","Re-run the test to confirm it passes"]},
+ {re:/Guest|External/i,t:"External sharing is allowed",why:"Guests or external users can be given access to this site. If it holds sensitive data, one forwarded invite exposes it outside the organisation.",steps:["Limit sharing to existing guests or turn it off for sites with sensitive data","Review current external users and remove those no longer needed","Apply sensitivity labels so DLP blocks external sharing of labelled files"]},
+ {re:/^Very High$/i,t:"Very High severity",why:"Very High findings are the issues most likely to lead to a breach, such as public access to sensitive data or missing encryption. They point to a gap in the safeguards Article 8(5) requires.",steps:["Assign an owner with a fix date within days","Apply the remediation steps on the finding in Securiti","If it cannot be fixed quickly, add a compensating control and record the exception"]},
+ {re:/^High$/i,t:"High severity",why:"High findings weaken the safeguards required by Article 8(5) and are often chained with other issues in real attacks.",steps:["Schedule the fix within your SLA for High findings","Group findings by rule and fix the rule once","Track progress on the posture score"]},
+ {re:/Mask|Restrict|Confidential/i,t:"Sensitive label",why:"Files with this label hold restricted information and need tighter controls.",steps:["Make sure DLP and sharing policies enforce the label","Check the files are stored only where the purpose requires"]}
+];
+// Widget-level guidance (header badge and KPI hover)
+const W_GUIDE={
+ aadhaar:"Mask now", pan:"Mask now",
+ masking:{t:"Masking coverage is low",why:"Most personal data columns are readable in clear text. Anyone with database access, or an attacker with stolen credentials, sees the full values.",steps:["Start with Aadhaar, PAN, card and bank numbers","Apply masking policies by data element, not table by table","Report coverage monthly until it passes 90%"]},
+ india_ids:{t:"India-specific identifiers need protection",why:"Aadhaar, PAN and payment identifiers carry the highest fraud and regulatory risk in India. They are personal data under the DPDP Act and Aadhaar has its own storage rules.",steps:["Mask every row marked Mask now","Confirm each data store has a lawful purpose for the identifier (Article 4)","Delete copies that serve no purpose (Article 8(7))"]},
+ india_heat:{t:"Sensitive data in these stores",why:"These data stores hold Aadhaar, PAN or RuPay numbers. Each one is a high-value target and needs the strongest safeguards.",steps:["Verify owners for each data store","Mask or tokenise the columns shown","Restrict access to least privilege and review it quarterly"]},
+ g_files_sensitive:{t:"Files holding sensitive data",why:"Unstructured files are easy to copy, email and share, so sensitive data in files leaks more often than data in databases.",steps:["Label sensitive files so DLP can act on them","Move them into restricted locations","Delete duplicates and stale copies"]},
+ g_struct:{t:"Sensitive data in databases",why:"Tables and columns with personal data need masking, encryption and access control under Article 8(5).",steps:["Prioritise tables holding government IDs or financial data","Apply column masking and encryption at rest","Review who can query these tables"]},
+ dsr_open:{t:"Open DSR backlog",why:"A growing backlog means requests risk going past their deadline (Articles 11–14).",steps:["Triage by deadline using the DSR queue","Automate system searches for the most common request types","Add reviewers during peaks"]},
+ dsr_overdue:"overdue", dsr_due7:"7 d", dsr_deadline:"overdue", dsr_queue:"overdue", dsr_aging:"overdue",
+ dsr_closed:{t:"Requests closed late",why:"Too many requests closed after their deadline show the rights process cannot keep up.",steps:["Find the slowest step for each request type","Set internal SLAs shorter than the legal ones"]},
+ consent_withdrawn:{t:"Honour withdrawals quickly",why:"Withdrawal must be as easy as giving consent and processing must stop (Article 6(4)).",steps:["Check every downstream system receives withdrawals","Measure time from withdrawal to stop and keep it within hours"]},
+ minor_consent:{t:"Children’s consent",why:"Processing a child’s data needs verifiable parental consent, and tracking or targeted ads are not allowed (Article 9). Penalties go up to ₹200 crore.",steps:["Block processing for minors without verified guardian consent","Turn off behavioural tracking and targeted ads for children"]},
+ notice_langs:{t:"Few notice languages",why:"Data principals can ask for the notice in English or any Eighth Schedule language (Article 5(3)). Few languages limit informed consent.",steps:["Translate notices into the main languages of your customer base","Publish and link them from every consent point"]},
+ dpia_open:{t:"Impact assessments pending",why:"A Significant Data Fiduciary must run periodic DPIAs and audits (Article 10(2)).",steps:["Prioritise assessments on high-risk processing such as biometrics, children or AI","Assign owners and due dates","Record outcomes and risk treatment"]},
+ dpdpa_fw:{t:"DPDPA framework",why:"Without the DPDPA framework enabled, control tests do not show your compliance gaps against the Act.",steps:["Enable the India DPDPA framework in Securiti Compliance","Map controls and run the tests"]},
+ vendors_low:{t:"Low-scoring processors",why:"You stay responsible for processing done by vendors on your behalf (Article 8(1)–(2)).",steps:["Review contracts and data shared with the lowest scorers","Require remediation plans or reduce the data they receive"]},
+ vendor_scores:"vendors_low",
+ risk_level:{t:"Open High and Very High risks",why:"Each open High or Very High risk points to a missing or weak safeguard under Article 8(5), the obligation with the largest penalty in the Schedule.",steps:["Assign an owner and a treatment decision to every Very High and High risk","Fix, transfer or formally accept with sign-off","Report the trend to leadership monthly"]},
+ risk_overdue:{t:"Risks past their remediation date",why:"Overdue risks show agreed fixes are not happening, which weakens your position with the Board after an incident.",steps:["Escalate overdue risks to their owners’ managers","Re-plan or formally accept with sign-off"]},
+ alerts_open:{t:"Open policy alerts",why:"Each alert is a data system breaking one of your data policies.",steps:["Work through Critical and High alerts first","Fix the setting or suppress with a documented reason"]},
+ breach_open:"h left", breach_tbl:"h left",
+ sp_open:{t:"Open security posture findings",why:"Cloud misconfigurations such as public storage, missing encryption or weak keys are the most common cause of data exposure.",steps:["Fix Very High and High findings first","Use the top failing rules to fix many findings at once","Assign owners; most findings currently have none"]},
+ sp_vhh:"Very High",
+ sp_unassigned:{t:"Findings with no owner",why:"Findings without an owner rarely get fixed.",steps:["Set default owners per cloud account or data system","Route new findings automatically to owning teams"]},
+ sp_flow30:{t:"Findings are growing",why:"More findings are opening than closing, so posture is getting worse.",steps:["Add guardrails so new resources are secure by default","Hold a fix sprint on the top rules"]},
+ ct_score:{t:"Posture score is low",why:"Securiti weights open findings by severity; a low score means many serious findings are open.",steps:["Fix Very High findings first; they move the score most","Track the score weekly"]},
+ g_public_links:{t:"Files with public links",why:"Anyone holding the link can open these files without signing in. If they contain personal data, one forwarded link is a breach.",steps:["Remove anonymous links from files with sensitive data first","Set default link type to specific people in SharePoint and OneDrive","Turn on link expiry"]},
+ g_org_links:{t:"Organisation-wide links",why:"Every employee can open these files, far more than need to.",steps:["Replace with specific-people links for sensitive files","Review the largest folders first"]},
+ g_sites_ext:{t:"Sites open to external sharing",why:"Guests and external users can be given access to these sites.",steps:["Turn off external sharing on sites that do not need it","Review current guests and remove stale ones"]},
+ g_sites_all:{t:"Sites granted to everyone",why:"All Company or Everyone except external users groups give access to every employee.",steps:["Remove broad groups from site permissions","Grant access to specific groups instead"]},
+ g_ext_sens:{t:"Toxic: external sharing + sensitive data",why:"These sites store sensitive data and allow sharing outside the organisation — one of the most likely breach paths in Microsoft 365.",steps:["Turn off external sharing on these sites now, or limit it to existing guests","Label sensitive files and block external sharing with DLP","Review guest access and audit recent external shares"]},
+ g_ext_sites_tbl:"g_ext_sens", g_sens_all_tbl:"g_sites_all", g_sites_ext_tbl:"g_sites_ext",
+ g_m365_find:{t:"Microsoft 365 misconfigurations",why:"Open posture findings on SharePoint or OneDrive tenants weaken controls over files with personal data.",steps:["Fix Very High and High findings on the tenant first","Review sharing, retention and audit log settings"]},
+ g_m365_tbl:"g_m365_find",
+ g_label_cov:{t:"Sensitive files without labels",why:"Unlabelled sensitive files escape DLP, encryption and sharing restrictions.",steps:["Turn on auto-labelling for Aadhaar, PAN and financial data","Back-label existing sensitive files","Block external sharing of labelled files"]},
+ label_cov:"g_label_cov",
+ rot_est:{t:"High ROT volume",why:"Redundant, obsolete and trivial data widens the breach surface and makes erasure requests harder. Data must be erased once its purpose is served (Article 8(7)).",steps:["Delete exact duplicates first","Apply retention rules to files untouched for years","Review ROT policies in Securiti and act on their findings"]},
+ rot_tbl:"rot_est", obs_files:"rot_est", dup_files:"rot_est",
+ sharing_alerts:"g_public_links",
+ ai_models_sens:{t:"AI models can reach sensitive data",why:"Personal data used for training or retrieval needs a lawful purpose (Article 4) and the same safeguards as the source (Article 8(5)).",steps:["List which sensitive elements each model can reach","Remove or mask fields the model does not need","Confirm the purpose is covered by the notice and consent"]},
+ ai_toxic_kpi:"Yes", ai_sensitive_tbl:"Yes", ai_toxic_tbl:"Yes",
+ ai_agents_vhh:{t:"AI agents with critical findings",why:"Agents act on other systems, so a critical misconfiguration on an agent gives a direct route to data (OWASP LLM06, excessive agency).",steps:["Fix encryption and access findings on agents first","Limit agent roles to the minimum actions they need","Log every action agents take on data"]},
+ ai_sp_findings:"ai_agents_vhh", ai_cats:"ai_agents_vhh", ai_tests_tbl:"Exposure",
+ g_tr_n:{t:"Transfers outside India",why:"Transfers are allowed except to countries the Government restricts (Article 16), and sector rules such as RBI localisation may still require local storage.",steps:["Check each destination against the Government’s restricted list","Confirm sector rules for payment or health data","Record the safeguards in the transfer agreement"]},
+ g_tr_tbl:"g_tr_n",
+ g_proc_find:{t:"Processes fed by vulnerable systems",why:"These processes take data from systems with open security findings, so a single misconfiguration can expose the whole process.",steps:["Fix findings on the source data systems","Tell process owners about the risk"]},
+ sp_india:{t:"Findings outside India",why:"Findings in non-Indian regions show where data may sit abroad; check transfer rules under Article 16.",steps:["Confirm which of these assets hold personal data of Indian users","Review whether they can be moved to Indian regions"]}
+};
+// Section fallback when nothing more specific exists
+const S_GUIDE={
+ visibility:"india_ids",sensitive:"masking",exposure:"g_ext_sens",rot:"rot_est",labelling:"g_label_cov",posture:"risk_level",access:"g_public_links",
+ sf_overview:"sp_open",sf_where:"sp_open",sf_what:"sp_open",sf_tests:"ct_score",ai_inventory:"ai_models_sens",ai_data:"ai_models_sens",ai_toxic:"Yes",ai_posture:"ai_agents_vhh",
+ breach:"h left",dprm:"dsr_open",consent:"consent_withdrawn",notice:"notice_langs",assess:"dpia_open",ropa:"g_tr_n"
+};
+const GENERIC={t:"Action needed",why:"This value indicates a risk to personal data or to compliance with the DPDP Act.",steps:["Open the item in Securiti and confirm the details","Assign an owner and a fix date","Track it until it is closed"]};
+let GCUR={w:null,s:null}; const GREG=[];
+function resolveGuide(key){for(let i=0;i<4&&key;i++){if(typeof key==="object")return key;
+  if(W_GUIDE[key]!==undefined){key=W_GUIDE[key];continue}
+  const p=P_GUIDE.find(g=>g.re.test(key));if(p)return p;
+  if(S_GUIDE[key]){key=S_GUIDE[key];continue}break;}return null;}
+function guideFor(text){return (text&&P_GUIDE.find(g=>g.re.test(text)))||resolveGuide(GCUR.w)||resolveGuide(GCUR.s)||GENERIC;}
+function gid(g){GREG.push(g);return GREG.length-1;}
+
 /* ================= DPDPA article hyperlinks (official MeitY text, opened at the right page) ================= */
 const ACT_URL="https://www.meity.gov.in/static/uploads/2024/06/2bf1f0e9f04e6fb4f8fef35e82c42aa5.pdf";
 const ACT_PAGE={"4":4,"5":4,"6":5,"7":6,"8":7,"8(8)":8,"8(9)":8,"8(10)":8,"8(11)":8,"9":8,"10":8,"11":9,"12":10,"13":10,"14":10,"15":11,"16":11,"17":11,"33":16,"Schedule":21};
@@ -850,22 +953,25 @@ function linkArticles(root){
 let PERSONA="DPO";
 const WBY=Object.fromEntries(WIDGETS.map(w=>[w.id,w]));
 function ago(d){if(!d)return"";const s=(Date.now()-d.getTime())/1000;if(s<60)return"just now";if(s<3600)return Math.round(s/60)+" min ago";if(s<86400)return Math.round(s/3600)+" h ago";const n=Math.round(s/86400);return n+(n===1?" day ago":" days ago");}
-function card(w,M){
-  let body="",cls="card",sv="";
+function card(w,M,sk){
+  let body="",cls="card",sv="",risk=false;GCUR={w:w.id,s:sk};
   try{
-    if(w.kpi){const k=w.kpi(M);cls+=" kpi";
-      body=k?`<div class="kpibox s-${k.s}">${w.cap?`<span class="cap">${esc(w.cap)}</span>`:""}<span class="num">${esc(fmt(k.v))}${k.u?` <small>${esc(k.u)}</small>`:""}</span><span class="sub">${esc(k.sub||"")}</span></div>`
+    if(w.kpi){const k=w.kpi(M);cls+=" kpi";risk=!!(k&&(k.s==="crit"||k.s==="warn"));
+      body=k?`<div class="kpibox s-${risk?"crit risk":k.s}"${risk?` tabindex="0" role="button" aria-label="Show next steps" data-g="${gid(resolveGuide(w.id)||resolveGuide(sk)||GENERIC)}"`:""}>${w.cap?`<span class="cap">${esc(w.cap)}</span>`:""}<span class="num">${esc(fmt(k.v))}${k.u?` <small>${esc(k.u)}</small>`:""}</span><span class="sub">${esc(k.sub||"")}</span></div>`
             :`<div class="kpibox s-mute"><span class="cap">${esc(w.t)}</span><span class="num">—</span><span class="sub">Not in this export</span></div>`;}
     else{const h=w.html(M);body=h||empty("Not in this export. Run the latest securiti_export.sh to include it.");}
   }catch(e){body=`<div class="empty">Could not draw this widget: ${esc(e.message)}</div>`}
+  if(!w.kpi&&/ risk"|var\(--crit\)/.test(body))risk=true;
+  const badge=risk?`<span class="needs" tabindex="0" role="button" aria-label="Action needed: show next steps" data-g="${gid(resolveGuide(w.id)||resolveGuide(sk)||GENERIC)}">Action needed</span>`:"";
   const span=w.kpi?KPI_W:Math.max(w.w,4);
-  return `<article class="${cls}" style="--w:${span}" data-id="${w.id}"><header><h4 title="${esc(w.t)}">${esc(w.t)}</h4><span class="ago">${ago(STAMP)}</span></header><div class="body">${body}</div></article>`;
+  return `<article class="${cls}${risk?" atrisk":""}" style="--w:${span}" data-id="${w.id}"><header><h4 title="${esc(w.t)}">${esc(w.t)}</h4><span class="hdr-r">${badge}<span class="ago">${ago(STAMP)}</span></span></header><div class="body">${body}</div></article>`;
 }
 function render(){
+  GREG.length=0;hidePop(true);
   const M=metrics(); const P=LAYOUT[PERSONA];
   $("#canvas").innerHTML=P.map((pri,i)=>`<section class="primary" aria-label="${esc(pri.title)}"><h2>${esc(pri.title)}${P.length>1||PERSONA!=="DPO"?` <span class="actchip">DPDPA ${esc(artFmt(pri.sections.map(s=>(s.act||ART[s.k].act)).join(" · ")))}</span>`:""}</h2>`+
     pri.sections.map((s,j)=>{const a=ART[s.k];const info=PERSONA==="CIO"?`<b>${esc(s.label||a.t)}.</b> ${esc(SHORT[s.k]||"")}`:a.info;
-      return `<div class="section" id="${secId(PERSONA,i,j)}"><div class="sechead"><h3>${esc(s.label||a.t)}</h3><span class="actchip">DPDPA ${esc(artFmt(s.act||a.act))}</span></div><p class="article">${info}</p><div class="grid">${s.w.map(id=>WBY[id]?card(WBY[id],M):"").join("")}</div></div>`}).join("")+`</section>`).join("");
+      return `<div class="section" id="${secId(PERSONA,i,j)}"><div class="sechead"><h3>${esc(s.label||a.t)}</h3><span class="actchip">DPDPA ${esc(artFmt(s.act||a.act))}</span></div><p class="article">${info}</p><div class="grid">${s.w.map(id=>WBY[id]?card(WBY[id],M,s.k):"").join("")}</div></div>`}).join("")+`</section>`).join("");
   document.querySelectorAll("#persona button").forEach(b=>b.setAttribute("aria-pressed",b.dataset.p===PERSONA));
   document.querySelectorAll(".rail [data-rp]").forEach(b=>b.setAttribute("aria-pressed",b.dataset.rp===PERSONA));
   $("#persTitle").textContent=PERS_TITLE[PERSONA];
@@ -910,6 +1016,22 @@ function exportJson(){
   const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download="dpdpa_dashboards_"+new Date().toISOString().slice(0,10)+".json";document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},500);
   log("Downloaded widget JSON");
 }
+
+/* ================= Guidance popover ================= */
+const POP=$("#gpop");let popFor=null,popT=null;
+function showPop(el){const g=GREG[+el.dataset.g];if(!g)return;clearTimeout(popT);popFor=el;
+  POP.innerHTML=`<div class="gp-h"><span class="gp-dot"></span>${esc(g.t)}</div><p class="gp-why"><b>Why it is a risk.</b> ${esc(g.why)}</p><div class="gp-s">Do next</div><ol>${g.steps.map(x=>`<li>${esc(x)}</li>`).join("")}</ol>`;
+  linkArticles(POP);POP.hidden=false;
+  const r=el.getBoundingClientRect(),pw=Math.min(360,innerWidth-24);POP.style.width=pw+"px";
+  let x=Math.min(Math.max(12,r.left),innerWidth-pw-12),y=r.bottom+8;const ph=POP.offsetHeight;if(y+ph>innerHeight-8)y=Math.max(8,r.top-ph-8);
+  POP.style.left=x+"px";POP.style.top=y+"px";}
+function hidePop(now){clearTimeout(popT);const f=()=>{POP.hidden=true;popFor=null};if(now)f();else popT=setTimeout(f,180);}
+document.addEventListener("mouseover",e=>{const el=e.target.closest("[data-g]");if(el){if(el!==popFor)showPop(el);else clearTimeout(popT);return}if(e.target.closest("#gpop")){clearTimeout(popT);return}if(popFor)hidePop();});
+document.addEventListener("focusin",e=>{const el=e.target.closest("[data-g]");if(el)showPop(el);});
+document.addEventListener("focusout",e=>{if(!e.relatedTarget||!e.relatedTarget.closest("#gpop,[data-g]"))hidePop();});
+document.addEventListener("click",e=>{const el=e.target.closest("[data-g]");if(el){if(popFor===el&&!POP.hidden)hidePop(true);else showPop(el);return}if(!e.target.closest("#gpop"))hidePop(true);});
+document.addEventListener("keydown",e=>{if(e.key==="Escape")hidePop(true);const el=e.target.closest&&e.target.closest("[data-g]");if(el&&(e.key==="Enter"||e.key===" ")){e.preventDefault();showPop(el);}});
+addEventListener("scroll",()=>hidePop(true),{passive:true});
 
 /* ================= Events ================= */
 function setPersona(p){PERSONA=p;try{localStorage.setItem("dpdpa.persona",p)}catch(_){ }render();window.scrollTo({top:0});}
