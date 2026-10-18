@@ -1,0 +1,932 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>DPDPA Executive Dashboards</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<style>
+/* Layout: dark icon rail + collapsible dashboards panel + main canvas of sectioned card grids (console style) */
+:root{
+  --bg:#F4F6F9; --surface:#FFFFFF; --surface-2:#F0F3F7; --kpi:#EEF6FB; --fg:#1F2933; --muted:#6B7685; --line:#E2E6EC;
+  --rail:#1C2733; --rail-fg:#9AA6B5; --accent:#1B9BD7; --accent-2:#0E7CB5; --accent-soft:#E4F3FB;
+  --crit:#DC5F51; --warn:#EE963A; --med:#E9BE32; --ok:#97BE36; --vlow:#5EAE5B; --info:#1B9BD7; --purple:#8E3FA8;
+  --crit-soft:#FBE7E4; --warn-soft:#FDEEDD; --ok-soft:#EEF5DE;
+  --f:"Inter","Segoe UI",system-ui,-apple-system,sans-serif; --f-mono:"JetBrains Mono",ui-monospace,Menlo,monospace;
+  --r:6px; color-scheme:light;
+}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%}
+body{background:var(--bg);color:var(--fg);font:14px/1.45 var(--f)}
+h1,h2,h3,h4{margin:0;text-wrap:balance;font-weight:600}
+button{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.mono{font-family:var(--f-mono);font-size:12px;font-variant-numeric:tabular-nums}
+
+.app{display:grid;grid-template-columns:56px auto minmax(0,1fr);min-height:100%}
+.rail{background:var(--rail);display:flex;flex-direction:column;align-items:center;gap:14px;padding:calc(10px + env(safe-area-inset-top,0px)) 0 14px;position:sticky;top:0;height:100vh}
+.mark{width:40px;height:40px;border-radius:8px;background:var(--accent);display:grid;place-items:center;color:#fff;font-weight:700;font-size:13px;letter-spacing:.02em}
+.rail button{width:36px;height:36px;border:0;border-radius:8px;background:transparent;color:var(--rail-fg);cursor:pointer;display:grid;place-items:center}
+.rail button:hover,.rail button[aria-pressed="true"]{background:#2A3846;color:#fff}
+.rail svg{width:20px;height:20px;stroke:currentColor;fill:none;stroke-width:1.7}
+
+.panel{width:300px;padding:16px 0 16px 16px;position:sticky;top:0;height:100vh;transition:width .2s ease,padding .2s ease}
+.panel-in{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);height:100%;display:flex;flex-direction:column;position:relative}
+.panel.hidden{width:0;padding-left:0;padding-right:0}
+.panel.hidden .panel-in{display:none}
+.collapse{position:absolute;top:52px;right:-12px;width:24px;height:30px;border:1px solid var(--line);border-radius:6px;background:var(--surface);cursor:pointer;display:grid;place-items:center;color:var(--muted);z-index:3}
+.panel-scroll{overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:18px;flex:1}
+.ptitle{font-size:15px;font-weight:600}
+.navgroup{display:flex;flex-direction:column}
+.navhead{display:flex;align-items:center;gap:10px;padding:9px 4px;font-weight:600;font-size:14.5px;border:0;border-top:1px solid var(--line);background:transparent;cursor:pointer;width:100%;text-align:left}
+.navhead:first-child{border-top:0}
+.navhead[aria-current="true"]{color:var(--accent-2)}
+.chev{width:18px;height:18px;border-radius:4px;background:var(--accent-soft);color:var(--accent);display:grid;place-items:center;font-size:10px;flex:0 0 auto}
+.navitem{border:0;background:transparent;text-align:left;padding:6px 10px 6px 30px;font-size:13.5px;color:var(--fg);cursor:pointer;border-left:2px solid transparent;width:100%}
+.navitem:hover{color:var(--accent)}
+.navitem.pri{font-weight:600;color:var(--muted);font-size:12px;letter-spacing:.06em;text-transform:uppercase;cursor:default;padding-top:10px}
+.navitem.sub{padding-left:40px;font-size:13px}
+.blockhead{font-size:11.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);font-weight:600}
+.row{display:flex;gap:8px;flex-wrap:wrap}
+.btn{border:1px solid var(--line);background:var(--surface);border-radius:6px;padding:8px 13px;font-weight:600;font-size:13px;cursor:pointer;display:inline-block}
+.btn:hover{border-color:var(--accent);color:var(--accent-2)}
+.note{font-size:12px;color:var(--muted);margin:0}
+.log{font-family:var(--f-mono);font-size:11px;color:var(--muted);background:var(--surface-2);border-radius:6px;padding:8px 10px;max-height:140px;overflow:auto;white-space:pre-wrap}
+.status{font-size:12px;border-radius:6px;padding:7px 9px;background:var(--surface-2);color:var(--muted)}
+.status.ok{background:var(--ok-soft);color:#56761A}.status.err{background:var(--crit-soft);color:#B8463A}
+
+.main{padding:calc(14px + env(safe-area-inset-top,0px)) 22px 48px;min-width:0;display:flex;flex-direction:column;gap:18px}
+.top{display:flex;justify-content:space-between;align-items:flex-start;gap:12px 20px;flex-wrap:wrap}
+.top .act{font-size:20px;font-weight:600;color:var(--accent-2)}
+.top h1{font-size:28px;font-weight:500;letter-spacing:-.01em;margin-top:2px}
+.meta{display:flex;gap:10px;flex-wrap:wrap;align-items:center;color:var(--muted);font-size:13px;margin-top:6px}
+.tag{border:1px solid var(--line);background:var(--surface);border-radius:999px;padding:2px 10px;font-size:12px}
+.tag.demo{border-color:var(--warn);color:#B66A17}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:6px;background:var(--surface);overflow:hidden}
+.seg button{border:0;background:transparent;padding:8px 18px;cursor:pointer;font-weight:500;color:var(--muted);border-left:1px solid var(--line)}
+.seg button:first-child{border-left:0}
+.seg button[aria-pressed="true"]{background:var(--accent-soft);color:var(--accent-2);font-weight:600}
+
+.timeline{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:16px 18px;display:grid;grid-template-columns:minmax(0,1fr) minmax(300px,380px);gap:18px}
+@media (max-width:1100px){.timeline{grid-template-columns:1fr}}
+.tl-head{display:flex;justify-content:space-between;align-items:baseline;gap:10px;margin-bottom:12px;flex-wrap:wrap}
+.tl-head h2{font-size:16px}
+.tl-track{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+@media (max-width:760px){.tl-track{grid-template-columns:1fr}}
+.phase{border:1px solid var(--line);border-radius:6px;padding:14px 14px 12px;position:relative}
+.phase::before{content:"";position:absolute;left:-1px;top:-1px;right:-1px;height:4px;border-radius:6px 6px 0 0;background:var(--pc)}
+.phase.done{--pc:var(--ok)} .phase.next{--pc:var(--accent)} .phase.later{--pc:#C9D1DB} .phase.final{--pc:var(--warn)}
+.phase .when{display:flex;justify-content:space-between;gap:8px;align-items:center;font-size:12px;color:var(--muted)}
+.phase h3{font-size:14px;margin:6px 0 6px}
+.phase ul{margin:0;padding-left:16px;font-size:12.5px;color:#3E4955;display:flex;flex-direction:column;gap:3px}
+.counters{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.counter{background:var(--kpi);border-radius:6px;padding:14px 16px;display:flex;flex-direction:column;justify-content:center;gap:2px}
+.counter .lbl{font-size:12.5px;color:#3E4955}
+.counter .big{font-size:44px;font-weight:300;line-height:1.05;border-left:2px solid var(--accent);padding-left:8px;font-variant-numeric:tabular-nums}
+.counter .big small{font-size:14px;font-weight:500;color:var(--muted)}
+.counter .sub{font-size:12px;color:var(--muted)}
+.counter.final{background:#FFF4E6}.counter.final .big{border-left-color:var(--warn)}
+.counter.wide{grid-column:1/-1}
+
+.primary{display:flex;flex-direction:column;gap:20px}
+.primary>h2{font-size:21px;font-weight:600;display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding-bottom:8px;border-bottom:2px solid var(--accent)}
+.section{display:flex;flex-direction:column;gap:12px;scroll-margin-top:14px}
+.sechead{display:flex;flex-wrap:wrap;align-items:center;gap:6px 12px}
+.sechead h3{font-size:17px;font-weight:600}
+.actchip{font-size:12px;font-weight:600;color:var(--accent-2);background:var(--accent-soft);border-radius:4px;padding:2px 8px}
+.article{background:var(--surface);border:1px solid var(--line);border-left:3px solid var(--accent);border-radius:var(--r);padding:10px 14px;font-size:13px;color:#3E4955;max-width:120ch;margin:0}
+.article b{color:var(--fg)}
+
+.grid{display:grid;grid-template-columns:repeat(12,minmax(0,1fr));gap:14px}
+@media (max-width:1250px){.grid{grid-template-columns:repeat(6,minmax(0,1fr))}.card{grid-column:span min(var(--w),6)!important}.card.kpi{grid-column:span 3!important}}
+@media (max-width:980px){.app{grid-template-columns:56px minmax(0,1fr)}.panel{position:fixed;left:56px;top:0;z-index:20;padding:12px}.panel.hidden{padding:0}}
+@media (max-width:640px){.grid{grid-template-columns:repeat(2,minmax(0,1fr))}.card,.card.kpi{grid-column:span 2!important}.main{padding-inline:16px}.app{grid-template-columns:44px minmax(0,1fr)}.panel{left:44px;width:min(300px,calc(100vw - 44px))}.rail .mark{width:32px;height:32px}.counters{grid-template-columns:1fr}}
+.card{grid-column:span var(--w);background:var(--surface);border:1px solid var(--line);border-radius:var(--r);display:flex;flex-direction:column;min-width:0}
+.card header{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:13px 16px;border-bottom:1px solid var(--line)}
+.card h4{font-size:15px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.card .ago{font-size:12.5px;color:var(--muted);white-space:nowrap}
+.card .body{padding:14px 16px;display:flex;flex-direction:column;gap:10px;flex:1;min-width:0}
+.kpibox{background:var(--kpi);border-radius:6px;padding:16px;flex:1;display:flex;flex-direction:column;justify-content:center;gap:3px}
+.kpibox .cap{font-size:12.5px;color:#3E4955}
+.kpibox .num{font-size:40px;font-weight:300;line-height:1.05;border-left:2px solid var(--sev,var(--accent));padding-left:8px;font-variant-numeric:tabular-nums}
+.kpibox .num small{font-size:15px;font-weight:500;color:var(--muted)}
+.kpibox .sub{font-size:12px;color:var(--muted)}
+.s-ok{--sev:var(--ok)} .s-warn{--sev:var(--warn)} .s-crit{--sev:var(--crit)} .s-info{--sev:var(--accent)} .s-mute{--sev:var(--muted)} .s-med{--sev:var(--med)}
+.empty{color:var(--muted);font-size:13px;padding:8px 0}
+.hint{font-size:12px;color:var(--muted)}
+.relevance{font-size:12.5px;color:#3E4955;background:var(--surface-2);border-radius:6px;padding:8px 10px}
+.hbars{display:flex;flex-direction:column;gap:8px}
+.hb{display:grid;grid-template-columns:minmax(90px,40%) 1fr 64px;gap:10px;align-items:center;font-size:13px}
+.hb>span:first-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.track{height:10px;background:var(--surface-2);border-radius:5px;overflow:hidden;display:flex}
+.track i{display:block;height:100%}
+.hb .v{text-align:right;font-family:var(--f-mono);font-size:12px}
+.legend{display:flex;gap:12px;flex-wrap:wrap;font-size:12px;color:var(--muted)}
+.legend i{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:5px;vertical-align:-1px}
+.tw{overflow-x:auto;margin-inline:-16px;padding-inline:16px}
+table{border-collapse:collapse;width:100%;font-size:13px}
+th{font-size:12.5px;color:var(--muted);font-weight:500;text-align:left;padding:6px 10px;border-bottom:1px solid var(--line);white-space:nowrap}
+td{padding:9px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+tr:last-child td{border-bottom:0}
+td.n,th.n{text-align:right;font-family:var(--f-mono);font-variant-numeric:tabular-nums}
+.pill{display:inline-flex;align-items:center;gap:5px;padding:1px 8px;border-radius:999px;font-size:11.5px;font-weight:600;white-space:nowrap}
+.pill::before{content:"";width:6px;height:6px;border-radius:50%;background:currentColor}
+.p-ok{background:var(--ok-soft);color:#5E7F17} .p-warn{background:var(--warn-soft);color:#B66A17} .p-crit{background:var(--crit-soft);color:#B8463A} .p-info{background:var(--accent-soft);color:var(--accent-2)} .p-mute{background:var(--surface-2);color:var(--muted)} .p-med{background:#FBF4D9;color:#957410}
+.donut{display:flex;gap:18px;align-items:center;flex-wrap:wrap}
+.donut .legend{flex-direction:column;gap:6px;font-size:12.5px}
+svg text{fill:var(--muted);font-family:var(--f-mono);font-size:10px}
+.artlink{color:inherit;text-decoration:underline;text-decoration-style:dotted;text-underline-offset:2px;text-decoration-color:var(--accent)}
+.artlink:hover{color:var(--accent-2);text-decoration-style:solid}
+.foot{color:var(--muted);font-size:12px;border-top:1px solid var(--line);padding-top:12px;margin:0}
+@media (prefers-reduced-motion:reduce){.panel{transition:none}}
+</style>
+</head>
+<body>
+<div class="app">
+  <nav class="rail" aria-label="Dashboards">
+    <div class="mark" aria-hidden="true">DP</div>
+    <button id="railPanel" title="Show or hide the dashboards panel" aria-label="Show or hide the dashboards panel" aria-pressed="true"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16"/></svg></button>
+    <button data-rp="DPO" title="DPO dashboard" aria-label="DPO dashboard"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.5"/><path d="M5 20c1.2-3.6 4-5 7-5s5.8 1.4 7 5"/></svg></button>
+    <button data-rp="CISO" title="CISO dashboard" aria-label="CISO dashboard"><svg viewBox="0 0 24 24"><path d="M12 3l7 3v6c0 4.4-3 7.6-7 9-4-1.4-7-4.6-7-9V6z"/></svg></button>
+    <button data-rp="CIO" title="CIO dashboard" aria-label="CIO dashboard"><svg viewBox="0 0 24 24"><rect x="4" y="12" width="3.5" height="8"/><rect x="10.25" y="7" width="3.5" height="13"/><rect x="16.5" y="3.5" width="3.5" height="16.5"/></svg></button>
+  </nav>
+
+  <aside class="panel" id="panel" aria-label="Dashboards panel">
+    <div class="panel-in">
+      <button class="collapse" id="collapse" title="Hide panel" aria-label="Hide panel">‹</button>
+      <div class="panel-scroll">
+        <div class="ptitle">Dashboards</div>
+        <div class="navgroup" id="nav"></div>
+        <div style="display:flex;flex-direction:column;gap:10px">
+          <div class="blockhead">Or load an export</div>
+          <div class="row">
+            <label class="btn" for="zip">Load export .zip</label>
+            <input id="zip" type="file" accept=".zip,.json" multiple hidden>
+            <button class="btn" id="demo">Demo data</button>
+          </div>
+          <p class="note">Load the zip made by securiti_export.sh. Nothing is uploaded; the file is read in this browser.</p>
+          <div class="status" id="status" role="status">Showing demo data. Figures are fictional.</div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:10px">
+          <div class="blockhead">Output</div>
+          <div class="row"><button class="btn" id="exportJson">Download widget JSON</button></div>
+          <div class="log" id="calllog" aria-label="Activity">No calls yet.</div>
+        </div>
+      </div>
+    </div>
+  </aside>
+
+  <main class="main">
+    <div class="top">
+      <div>
+        <div class="act">DPDPA Act · Securiti DSPM &amp; Privacy</div>
+        <h1>Executive Dashboards</h1>
+        <div class="meta"><span id="persTitle">DPO dashboard</span><span id="srcTag" class="tag demo">Demo data</span><span id="stamp"></span></div>
+      </div>
+      <div class="seg" role="group" aria-label="Dashboard" id="persona">
+        <button data-p="DPO" aria-pressed="true">DPO</button>
+        <button data-p="CISO" aria-pressed="false">CISO</button>
+        <button data-p="CIO" aria-pressed="false">CIO</button>
+      </div>
+    </div>
+
+    <section class="timeline" aria-label="DPDP implementation timeline" id="timeline"></section>
+    <div id="canvas" style="display:flex;flex-direction:column;gap:30px"></div>
+    <p class="foot">Article numbers link to the official text of the Act on <a class="artlink" href="https://www.meity.gov.in/static/uploads/2024/06/2bf1f0e9f04e6fb4f8fef35e82c42aa5.pdf" target="_blank" rel="noopener">meity.gov.in</a>, opened at the relevant page. Article references are to the Digital Personal Data Protection Act, 2023 and the DPDP Rules, 2025, summarised in plain language. Severity uses Securiti’s 1–5 scale (5 = Very High). Breach progress codes 1–3 are shown as stages, with 3 treated as closed; confirm against your tenant. Not legal advice.</p>
+  </main>
+</div>
+<script>
+
+(function(){
+"use strict";
+const $=s=>document.querySelector(s);
+const esc=v=>String(v??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const fmt=n=>(n==null||n==="")?"—":(typeof n==="number"?n.toLocaleString("en-IN"):n);
+const bytes=b=>{if(b==null||isNaN(b))return"—";const u=["B","KB","MB","GB","TB","PB"];let i=0;b=+b;while(b>=1024&&i<u.length-1){b/=1024;i++}return (b>=100||i===0?Math.round(b):b.toFixed(1))+" "+u[i]};
+const Q="/reporting/v1/sources/query";
+const SPC={name:"violation_id",type:"aggregate",options:{function:"count",alias:"findings"}};
+const SPF=open=>({op:"and",value:[{op:"eq",field:"meta_type",value:"violation"}].concat(open?[{op:"in",field:"status",value:["open"]}]:[])});
+const cnt=(f="id")=>({name:f,type:"aggregate",options:{function:"count",alias:"n"}});
+const F=a=>a.map(n=>({name:n}));
+const pdFilter={op:"and",value:[{op:"eq",field:"is_pd",value:true}]};
+const fcCols={name:"document_id",type:"aggregate",options:{function:"count",alias:"columns"}};
+const gb=(...g)=>g.map(f=>({field:f,options:{size:10000}}));
+
+/* ================= Query catalogue (the backend JSON logic) ================= */
+const QUERIES={
+ dsr_tickets:{method:"POST",path:Q,paged:"offset",body:{source:"dsr_ticket",distinct:true,skip_cache:true,response_config:{format:1},fields:F(["id","status","request_type","type_tags","country","created_at","deadline","published_at","ticket_message_channel"]),order_by:["-id"]}},
+ dsr_form_counts:{method:"GET",path:"/privaci/v1/admin/dsr/forms/counts"},
+ consent_by_activity:{method:"POST",path:Q,body:{source:"purpose_consents",skip_cache:true,response_config:{format:1},fields:[cnt("consent_id")],group_by:gb("consented_item_activity")}},
+ consent_by_purpose_activity:{method:"POST",path:Q,body:{source:"purpose_consents",skip_cache:true,response_config:{format:1},fields:[cnt("consent_id")],group_by:gb("processing_purpose","consented_item_activity")}},
+ consent_by_country:{method:"POST",path:Q,body:{source:"purpose_consents",skip_cache:true,response_config:{format:1},fields:[cnt("consent_id")],group_by:gb("consent_geo_location_country")}},
+ consent_purposes:{method:"GET",path:"/privaci/v1/consentapi/processing_purpose",keys:"consent"},
+ pd_attributes:{method:"POST",path:Q,body:{source:"pd_attribute_v2",response_config:{format:1},fields:F(["name","category_name","system_name"]),pagination:{type:"limit-offset",limit:5000,offset:0}}},
+ classif_by_attribute:{method:"POST",path:Q,body:{source:"field_classifications",response_config:{format:1},fields:[fcCols],group_by:gb("attribute_keyword"),filter:pdFilter}},
+ classif_by_attribute_datasource:{method:"POST",path:Q,body:{source:"field_classifications",response_config:{format:1},fields:[fcCols,{name:"row_count",type:"aggregate",options:{function:"sum",alias:"rows"}}],group_by:[...gb("attribute_keyword","datasource_id"),{field:"connector_type_id"}],filter:pdFilter}},
+ classif_by_attribute_masking:{method:"POST",path:Q,body:{source:"field_classifications",response_config:{format:1},fields:[fcCols],group_by:gb("attribute_keyword","masking_policy_name_keyword"),filter:pdFilter}},
+ datasources_list:{method:"POST",path:Q,body:{source:"tenant_data_source",skip_cache:true,response_config:{format:1,int_64_to_str:true},fields:F(["id","name","connector_type_id","ds_connector_type"]),pagination:{type:"limit-offset",limit:5000,offset:0}}},
+ datamap_assets:{method:"POST",path:Q,body:{source:"data_map_asset",skip_cache:true,response_config:{format:1},fields:F(["id","name","elements_count","technology_type","asset_exists"]),pagination:{type:"limit-offset",limit:5000,offset:0}}},
+ risk_by_level:{method:"POST",path:Q,body:{source:"risk_register",skip_cache:true,response_config:{format:1},fields:[cnt()],group_by:[{field:"level"}],filter:{op:"ne",field:"state",value:"DRAFT"}}},
+ risk_by_state:{method:"POST",path:Q,body:{source:"risk_register",skip_cache:true,response_config:{format:1},fields:[cnt()],group_by:[{field:"state"}],filter:{op:"ne",field:"state",value:"DRAFT"}}},
+ risk_by_overdue:{method:"POST",path:Q,body:{source:"risk_register",skip_cache:true,response_config:{format:1},fields:[cnt()],group_by:[{field:"overdue"}],filter:{op:"ne",field:"state",value:"DRAFT"}}},
+ alerts_by_severity_status:{method:"POST",path:Q,body:{source:"cross_border_violation",skip_cache:true,response_config:{format:1},fields:[cnt()],group_by:[{field:"severity"},{field:"status"}]}},
+ alerts_by_regulation:{method:"POST",path:Q,body:{source:"cross_border_violation",response_config:{format:1},fields:[cnt()],group_by:[{field:"regulation"}]}},
+ alerts_by_datasource:{method:"POST",path:Q,body:{source:"cross_border_violation",response_config:{format:1},fields:[cnt()],group_by:gb("datasource_id")}},
+ breach_incidents:{method:"POST",path:Q,body:{source:"breach_incident",distinct:true,skip_cache:true,response_config:{format:1},fields:F(["id","name","type","deadline","created_at","modified_at","progress"]),order_by:["-created_at"],pagination:{type:"limit-offset",limit:500,offset:0}}},
+ assessments:{method:"GET",path:"/privaci/v1/user/assessments/",paged:"page",params:{sort:"-modified_at",not_bw_compatible:"true"}},
+ vendors:{method:"GET",path:"/privaci/v1/admin/vendors",params:{limit:500}},
+ compliance_frameworks:{method:"GET",path:"/privaci/v1/admin/compliance/framework"},
+ privacy_notices:{method:"GET",path:"/privaci/v1/admin/privacy_notices/list"},
+ // ---- unstructured files (doc_metadata): labelling, file insights, duplicates, ROT
+ files_by_ds:{method:"POST",path:Q,body:{source:"doc_metadata",response_config:{format:1,int_64_to_str:false},fields:[{name:"resource_id",type:"aggregate",options:{function:"count",alias:"files"}},{name:"resource_size",type:"aggregate",options:{function:"sum",alias:"bytes"}}],group_by:gb("data_source_id"),filter:{op:"and",value:[{op:"eq",field:"primary_scan",value:true}]}}},
+ files_unique_by_ds:{method:"POST",path:Q,body:{source:"doc_metadata",response_config:{format:1,int_64_to_str:false},fields:[{name:"sha256",type:"aggregate",options:{function:"count_distinct",alias:"unique_files"}}],group_by:gb("data_source_id"),filter:{op:"and",value:[{op:"eq",field:"primary_scan",value:true}]}}},
+ files_sensitive_by_ds:{method:"POST",path:Q,body:{source:"doc_metadata",response_config:{format:1,int_64_to_str:false},fields:[{name:"resource_id",type:"aggregate",options:{function:"count",alias:"files"}}],group_by:gb("data_source_id"),filter:{op:"and",value:[{op:"eq",field:"primary_scan",value:true},{op:"exists",field:"pd_id",value:true}]}}},
+ files_by_label:{method:"POST",path:Q,body:{source:"doc_metadata",response_config:{format:1,int_64_to_str:false},fields:[{name:"resource_id",type:"aggregate",options:{function:"count",alias:"files"}}],group_by:gb("classification_label_keyword"),filter:{op:"and",value:[{op:"eq",field:"primary_scan",value:true},{op:"exists",field:"classification_label_keyword",value:true},{op:"ne",field:"classification_label_keyword",value:""}]}}},
+ files_by_format:{method:"POST",path:Q,body:{source:"doc_metadata",response_config:{format:1,int_64_to_str:false},fields:[{name:"resource_id",type:"aggregate",options:{function:"count",alias:"files"}},{name:"resource_size",type:"aggregate",options:{function:"sum",alias:"bytes"}}],group_by:gb("file_format"),filter:{op:"and",value:[{op:"eq",field:"primary_scan",value:true}]}}},
+ files_obsolete_by_ds:{method:"POST",path:Q,bodyFn:()=>({source:"doc_metadata",response_config:{format:1,int_64_to_str:false},fields:[{name:"resource_id",type:"aggregate",options:{function:"count",alias:"files"}},{name:"resource_size",type:"aggregate",options:{function:"sum",alias:"bytes"}}],group_by:gb("data_source_id"),filter:{op:"and",value:[{op:"eq",field:"primary_scan",value:true},{op:"lt",field:"resource_modified_at",value:Date.now()-OBSOLETE_YEARS*365*864e5}]}})},
+ files_skip_reasons:{method:"POST",path:Q,body:{source:"doc_metadata",response_config:{format:1,int_64_to_str:false},fields:[{name:"resource_id",type:"aggregate",options:{function:"count",alias:"files"}}],group_by:gb("skip_reason"),filter:{op:"and",value:[{op:"eq",field:"skipped",value:true}]}}},
+ insights_policies:{method:"POST",path:"/privaci/v1/admin/policy/insights_policy/insights/filter",params:{limit:-1},body:{resource_type:"policy",order_by:{field:"created_at",operator:"dsc"},filters:{and:[]}}},
+ alerts_by_policy:{method:"POST",path:Q,body:{source:"cross_border_violation",response_config:{format:1},fields:[cnt()],group_by:[...gb("policy_name"),{field:"status"}]}},
+ // ---- tenant's own Securiti reporting dashboards (widgets are replayed through graph data_request)
+ reporting_dashboards:{method:"GET",path:"/privaci/v1/reporting_dashboard"},
+ // ---- Security posture findings (source "violation", meta_type violation) and compliance control tests
+ sp_by_severity_status:{method:"POST",path:Q,body:{source:"violation",skip_cache:true,response_config:{format:1},fields:[SPC],group_by:[{field:"severity"},{field:"status"}],filter:SPF()}},
+ sp_open_by_cloud_account:{method:"POST",path:Q,body:{source:"violation",skip_cache:true,response_config:{format:1},fields:[SPC],group_by:[{field:"cloud_provider_type"},{field:"cloud_provider_account_id",options:{size:500}}],filter:SPF(true)}},
+ sp_open_by_region:{method:"POST",path:Q,body:{source:"violation",skip_cache:true,response_config:{format:1},fields:[SPC],group_by:[{field:"cloud_provider_type"},{field:"cloud_provider_region",options:{size:500}}],filter:SPF(true)}},
+ sp_open_by_service:{method:"POST",path:Q,body:{source:"violation",skip_cache:true,response_config:{format:1},fields:[SPC],group_by:[{field:"cloud_provider_type"},{field:"service_type",options:{size:500}}],filter:SPF(true)}},
+ sp_open_by_category:{method:"POST",path:Q,body:{source:"violation",skip_cache:true,response_config:{format:1},fields:[SPC],group_by:[{field:"rule_category",options:{size:500}}],filter:SPF(true)}},
+ sp_open_by_rule:{method:"POST",path:Q,body:{source:"violation",skip_cache:true,response_config:{format:1},fields:[SPC],group_by:[{field:"rule_name_keyword",options:{size:25}},{field:"severity"}],filter:SPF(true)}},
+ sp_open_by_policy:{method:"POST",path:Q,body:{source:"violation",skip_cache:true,response_config:{format:1},fields:[SPC],group_by:[{field:"policy_name_keyword",options:{size:100}}],filter:SPF(true)}},
+ sp_open_by_asset:{method:"POST",path:Q,body:{source:"violation",skip_cache:true,response_config:{format:1},fields:[SPC],group_by:[{field:"asset_name_keyword",options:{size:15}},{field:"asset_type"},{field:"cloud_provider_type"}],filter:SPF(true)}},
+ sp_open_by_assignee:{method:"POST",path:Q,body:{source:"violation",skip_cache:true,response_config:{format:1},fields:[SPC],group_by:[{field:"assignee_id",options:{size:500}}],filter:SPF(true)}},
+ sp_opened_30d:{method:"POST",path:Q,bodyFn:()=>({source:"violation",skip_cache:true,response_config:{format:1},fields:[SPC],group_by:[{field:"created_at",type:"histogram",options:{interval:"day",timezone:"+05:30"}}],filter:{op:"and",value:[{op:"eq",field:"meta_type",value:"violation"},{op:"gte",field:"created_at",value:Date.now()-30*864e5}]}})},
+ sp_resolved_30d:{method:"POST",path:Q,bodyFn:()=>({source:"violation",skip_cache:true,response_config:{format:1},fields:[SPC],group_by:[{field:"modified_at",type:"histogram",options:{interval:"day",timezone:"+05:30"}}],filter:{op:"and",value:[{op:"eq",field:"meta_type",value:"violation"},{op:"gte",field:"modified_at",value:Date.now()-30*864e5},{op:"in",field:"status",value:["fixed","passed","suppressed","closed"]}]}})},
+ ai_models_agents:{method:"POST",path:"/privaci/v1/graph/data_request?type=aggregateLookup",body:{"args": {"aggregateLookup": {"by": ["assetType", "cloud"], "connections": [{"relationshipType": [{"backwards": false, "label": "AIMLMODEL_HAS_AIAGENT"}], "withNode": {"connections": [], "nodeType": ["AIAGENT"], "ops": [{"op": "count", "term": {"description": "Number of AI Agents", "displayName": "AI Agents", "name": "aiagents", "order": 4}}], "withPropertyFilter": {}}}, {"relationshipType": [{"backwards": false, "label": "ASSET_HAS_POSTUREFINDINGEXT"}], "withNode": {"connections": [], "nodeType": ["POSTUREFINDINGEXT"], "ops": [{"op": "count", "term": {"description": "Number of Findings", "displayName": "Misconfigs", "name": "misconfigs", "order": 9}}], "withPropertyFilter": {"status": {"eq": "open"}}}}, {"relationshipType": [{"backwards": true, "label": "DATASYSTEM_CONTAINS_DATASET_FOR_AIMLMODEL"}], "withNode": {"connections": [{"nestedOp": {"term": {"description": "Number of Sensitive Data Elements", "displayName": "Sensitive Data Elements", "name": "sdeCount"}, "valueFragments": [{"relationshipType": [{"backwards": false, "label": "DATASYSTEM_HAS_FILES"}], "withNode": {"connections": [], "nodeType": ["FILEEXT"], "ops": [{"isNested": true, "op": "ext_class_count", "term": {"description": "Number of Sensitive Data Elements22", "displayName": "Sensitive Data Elements22", "name": "sdeCount"}, "type": "pds"}], "withPropertyFilter": {}}}]}}, {"relationshipType": [{"backwards": false, "label": "DATASYSTEM_HAS_FILES"}], "withNode": {"connections": [], "nodeType": ["FILEEXT"], "ops": [{"op": "ext_node_count", "propHeader": {"description": "Number of Files", "displayName": "Files", "gqlType": "Int", "sortable": false, "type": "formatInt"}, "term": {"description": "Number of Files", "displayName": "Files", "name": "fileCount", "order": 6, "type": "formatInt"}}], "withPropertyFilter": {}}}], "nodeType": ["DATASYSTEM"], "ops": [{"op": "count", "term": {"description": "Number of Data Systems", "displayName": "Data Systems", "name": "datasystems", "order": 5}}], "withPropertyFilter": {}}}], "nodeType": ["AIMLMODEL"], "ops": [{"op": "count", "term": {"description": "Number of AI Models", "displayName": "AI Models", "name": "modelCount", "order": 4}}, {"order": "DECREASING", "postProcessElement": "datasystems"}], "withPropertyFilter": {}}, "pagination": {"page": 1, "rowsPerPage": 500}}, "filters": null, "owner": "", "req_type": "aggregateLookup", "tableName": null, "tenant_id": "", "uuid": ""}},
+ ai_platforms:{method:"POST",path:"/privaci/v1/graph/data_request?type=aggregateLookup",body:{"args": {"aggregateLookup": {"connections": [{"relationshipType": [{"backwards": false, "label": "AIMLPLATFORM_HAS_AIAGENT"}], "withNode": {"connections": [], "nodeType": ["AIAGENT"], "ops": [{"op": "count", "term": {"description": "Number of AI Agents", "displayName": "AI Agents", "name": "aiagent", "order": 5}}], "withPropertyFilter": {}}}, {"relationshipType": [{"backwards": false, "label": "AIMLPLATFORM_DEPLOYS_AIMLMODEL"}], "withNode": {"connections": [], "nodeType": ["AIMLMODEL"], "ops": [{"op": "count", "term": {"description": "Number of AI Models", "displayName": "AI Models", "name": "aimodel", "order": 6}}], "withPropertyFilter": {}}}, {"relationshipType": [{"backwards": false, "label": "ASSET_HAS_POSTUREFINDINGEXT"}], "withNode": {"connections": [], "nodeType": ["POSTUREFINDINGEXT"], "ops": [{"op": "count", "term": {"description": "Number of Findings", "displayName": "Misconfigs", "name": "misconfigs", "order": 8}}], "withPropertyFilter": {"status": {"eq": "open"}}}}], "nodeType": ["AIMLPLATFORM"], "ops": [{"order": "DECREASING", "postProcessElement": "datasystems"}], "withPropertyFilter": {}}, "pagination": {"page": 1, "rowsPerPage": 50}, "requestedColumns": {"AIMLPLATFORM": ["assetType", "key", "displayName", "region", "cloud"]}}, "filters": null, "owner": "", "req_type": "aggregateLookup", "tableName": null, "tenant_id": "", "uuid": ""}},
+ iam_roles_sensitive:{method:"POST",path:"/privaci/v1/graph/data_request?type=aggregateLookup",body:{"args": {"aggregateLookup": {"by": ["displayName", "providerType"], "connections": [{"relationshipType": [{"backwards": true, "label": "IAM_POLICY_ELEMENT_HAS_SUBJ_ROLE"}], "withNode": {"connections": [{"relationshipType": [{"backwards": false, "label": "IAM_POLICY_ELEMENT_HAS_OBJECT_RESOURCE_SCOPE"}], "withNode": {"connections": [{"relationshipType": [{"backwards": false, "label": "IAM_RESOURCE_SCOPE_MAPS_TO_DATAOBJECT"}], "withNode": {"connections": [{"relationshipType": [{"backwards": false, "label": "DATAOBJECT_HAS_COLUMNEXT"}], "withNode": {"connections": [], "nodeType": ["COLUMNEXT"], "ops": [{"op": "ext_propsum", "prop": "pdCount", "propHeader": {"displayName": "Sensitive Data Elements", "type": "formatInt"}, "term": {"description": "Sensitive Data Elements", "displayName": "Sensitive Data Elements", "name": "pdCount", "type": "formatInt"}}], "withPropertyFilter": {}}}], "nodeType": ["TABLE"], "withPropertyFilter": {}}}], "nodeType": ["IAM_RESOURCE_SCOPE"], "withPropertyFilter": {}}}], "nodeType": ["IAM_POLICY_ELEMENT"], "withPropertyFilter": {}}}, {"relationshipType": [{"backwards": true, "label": "IAM_PRINCIPAL_USER_HAS_PRINCIPAL_ROLE"}], "withNode": {"connections": [], "nodeType": ["IAM_PRINCIPAL_USER"], "ops": [{"op": "count", "propHeader": {"displayName": "Users", "gqlType": "Int", "type": "formatInt"}, "term": {"description": "Number of users", "displayName": "Users", "name": "userCount"}}], "withPropertyFilter": {}}}], "nodeType": ["IAM_PRINCIPAL_ROLE"], "ops": [{"order": "DECREASING", "postProcessElement": "pdCount", "topCount": 20}], "withPropertyFilter": {}}}, "filters": null, "owner": "", "req_type": "aggregateLookup", "tableName": null, "tenant_id": "", "uuid": ""}},
+ ai_count_models:{method:"POST",path:"/privaci/v1/graph/data_request?type=aggregateLookup",body:{"args": {"aggregateLookup": {"connections": [], "nodeType": ["AIMLMODEL"], "var": "n", "unique": true, "ops": [{"op": "simplecount", "var": "n", "unique": true, "propHeader": {"description": "Total Count", "displayName": "Total Count", "name": "total"}, "term": {"description": "Total Count", "displayName": "Total Count", "name": "total"}}], "withPropertyFilter": {}}, "pagination": {"page": 1, "rowsPerPage": 3}}, "filters": null, "owner": "", "req_type": "aggregateLookup", "tableName": null, "tenant_id": "", "uuid": ""}},
+ ai_count_agents:{method:"POST",path:"/privaci/v1/graph/data_request?type=aggregateLookup",body:{"args": {"aggregateLookup": {"connections": [], "nodeType": ["AIAGENT"], "var": "n", "unique": true, "ops": [{"op": "simplecount", "var": "n", "unique": true, "propHeader": {"description": "Total Count", "displayName": "Total Count", "name": "total"}, "term": {"description": "Total Count", "displayName": "Total Count", "name": "total"}}], "withPropertyFilter": {}}, "pagination": {"page": 1, "rowsPerPage": 3}}, "filters": null, "owner": "", "req_type": "aggregateLookup", "tableName": null, "tenant_id": "", "uuid": ""}},
+ ai_count_kb:{method:"POST",path:"/privaci/v1/graph/data_request?type=aggregateLookup",body:{"args": {"aggregateLookup": {"connections": [], "nodeType": ["AIKNOWLEDGEBASE"], "var": "n", "unique": true, "ops": [{"op": "simplecount", "var": "n", "unique": true, "propHeader": {"description": "Total Count", "displayName": "Total Count", "name": "total"}, "term": {"description": "Total Count", "displayName": "Total Count", "name": "total"}}], "withPropertyFilter": {}}, "pagination": {"page": 1, "rowsPerPage": 3}}, "filters": null, "owner": "", "req_type": "aggregateLookup", "tableName": null, "tenant_id": "", "uuid": ""}},
+ ai_agents_vhh:{method:"POST",path:"/privaci/v1/graph/data_request?type=aggregateLookup",body:{"args": {"aggregateLookup": {"connections": [{"relationshipType": [{"backwards": false, "label": "ASSET_HAS_POSTUREFINDINGEXT"}], "withNode": {"nodeType": ["POSTUREFINDINGEXT"], "unique": false, "withPropertyFilter": {"status": {"eq": "open"}, "severity": {"in": [4, 5]}}, "connections": []}}], "nodeType": ["AIAGENT"], "var": "n", "unique": true, "ops": [{"op": "simplecount", "var": "n", "unique": true, "propHeader": {"description": "AI agents with Very High or High findings", "displayName": "AI agents with Very High or High findings", "name": "total"}, "term": {"description": "AI agents with Very High or High findings", "displayName": "AI agents with Very High or High findings", "name": "total"}}], "withPropertyFilter": {}}, "pagination": {"page": 1, "rowsPerPage": 3}}, "filters": null, "owner": "", "req_type": "aggregateLookup", "tableName": null, "tenant_id": "", "uuid": ""}},
+ ai_models_vhh:{method:"POST",path:"/privaci/v1/graph/data_request?type=aggregateLookup",body:{"args": {"aggregateLookup": {"connections": [{"relationshipType": [{"backwards": false, "label": "ASSET_HAS_POSTUREFINDINGEXT"}], "withNode": {"nodeType": ["POSTUREFINDINGEXT"], "unique": false, "withPropertyFilter": {"status": {"eq": "open"}, "severity": {"in": [4, 5]}}, "connections": []}}], "nodeType": ["AIMLMODEL"], "var": "n", "unique": true, "ops": [{"op": "simplecount", "var": "n", "unique": true, "propHeader": {"description": "AI models with Very High or High findings", "displayName": "AI models with Very High or High findings", "name": "total"}, "term": {"description": "AI models with Very High or High findings", "displayName": "AI models with Very High or High findings", "name": "total"}}], "withPropertyFilter": {}}, "pagination": {"page": 1, "rowsPerPage": 3}}, "filters": null, "owner": "", "req_type": "aggregateLookup", "tableName": null, "tenant_id": "", "uuid": ""}},
+ ai_agents_kb:{method:"POST",path:"/privaci/v1/graph/data_request?type=aggregateLookup",body:{"args": {"aggregateLookup": {"connections": [{"relationshipType": [{"backwards": false, "label": "AIAGENT_USES_AIKNOWLEDGEBASE"}], "withNode": {"nodeType": ["AIKNOWLEDGEBASE"], "unique": false, "withPropertyFilter": {}, "connections": []}}], "nodeType": ["AIAGENT"], "var": "n", "unique": true, "ops": [{"op": "simplecount", "var": "n", "unique": true, "propHeader": {"description": "AI agents connected to a knowledge base", "displayName": "AI agents connected to a knowledge base", "name": "total"}, "term": {"description": "AI agents connected to a knowledge base", "displayName": "AI agents connected to a knowledge base", "name": "total"}}], "withPropertyFilter": {}}, "pagination": {"page": 1, "rowsPerPage": 3}}, "filters": null, "owner": "", "req_type": "aggregateLookup", "tableName": null, "tenant_id": "", "uuid": ""}},
+ ai_agent_findings_by_category:{method:"POST",path:"/privaci/v1/graph/data_request?type=aggregateLookup",body:{"args": {"aggregateLookup": {"nodeType": ["POSTUREFINDINGEXT"], "withPropertyFilter": {"status": {"eq": "open"}, "severity": {"in": [4, 5]}}, "connections": [{"relationshipType": [{"backwards": true, "label": "ASSET_HAS_POSTUREFINDINGEXT"}], "withNode": {"nodeType": ["AIAGENT", "AIMLMODEL", "AIKNOWLEDGEBASE"], "withPropertyFilter": {}, "connections": []}}], "ops": [{"op": "mapcount", "prop": "ruleCategory", "propHeader": {"description": "Findings Count", "displayName": "Findings Count", "gqlType": "Int", "sortable": false, "type": "int"}, "topCount": 10, "order": "DECREASING"}]}, "pagination": {"page": 1, "rowsPerPage": 10}}, "filters": null, "owner": "", "req_type": "aggregateLookup", "tableName": null, "tenant_id": "", "uuid": ""}},
+ ct_tests_all:{method:"POST",path:"/privaci/v1/graph/data_request",body:{"req_type": "graphLookup", "owner": "{{OWNER_EMAIL}}", "args": {"lookupQuery": {"nodeType": ["CONTROL_TEST"], "withPropertyFilter": {"active": {"eq": true}}, "connections": [{"relationshipType": [{"backwards": false, "label": "CONTROL_TEST_HAS_FINDING"}], "withNode": {"nodeType": ["COMPLIANCE_TEST_FINDING"], "aggregate": true, "withPropertyFilter": {}, "connections": []}}]}, "pagination": {"page": 1, "rowsPerPage": 200}}},note:"Replace {{OWNER_EMAIL}} with your Securiti login email"},
+ sp_open_by_asset_type_sev:{method:"POST",path:Q,body:{source:"violation",skip_cache:true,response_config:{format:1},fields:[SPC],group_by:[{field:"asset_type",options:{size:1000}},{field:"severity"}],filter:SPF(true)}},
+ g_files_total:{method:"POST",path:"/privaci/v1/graph/data_request?type=aggregateLookup",body:{"args": {"aggregateLookup": {"connections": [], "nodeType": ["FILEEXT"], "ops": [{"op": "ext_simplecount", "propHeader": {"description": "Files - Total Count", "displayName": "Files - Total Count", "name": "fileext-Total Count"}, "term": {"description": "Files - Total Count", "displayName": "Files - Total Count", "name": "fileext-Total Count"}}], "withPropertyFilter": {}}, "readFromCache": true, "updateCache": false}, "owner": "{{OWNER_EMAIL}}", "req_type": "aggregateLookup"},note:"Graph query from your tenant's dashboards; replace {{OWNER_EMAIL}} with your login email"},
+ g_files_volume:{method:"POST",path:"/privaci/v1/graph/data_request?type=aggregateLookup",body:{"args": {"aggregateLookup": {"connections": [], "nodeType": ["FILEEXT"], "ops": [{"op": "ext_propsum", "prop": "resourceSize", "propHeader": {"description": "Files - Total File Size", "displayName": "Files - Total File Size", "gqlType": "Int", "sortable": false, "type": "formatInt"}}], "withPropertyFilter": {"resourceSize": {"gt": 0}}}, "readFromCache": true, "updateCache": false}, "owner": "{{OWNER_EMAIL}}", "req_type": "aggregateLookup"},note:"Graph query from your tenant's dashboards; replace {{OWNER_EMAIL}} with your login email"},
+ g_files_sensitive:{method:"POST",path:"/privaci/v1/graph/data_request?type=aggregateLookup",body:{"args": {"aggregateLookup": {"connections": [{"relationshipType": [{"backwards": true, "label": "FILEEXT_HAS_CLASSIFICATION"}], "withNode": {"connections": [], "nodeType": ["FILEEXT"], "withPropertyFilter": {}, "ops": [{"op": "ext_simplecount", "propHeader": {"description": "Files - Total Count", "displayName": "Files - Total Count", "name": "fileext-Total Count"}, "term": {"description": "Files - Total Count", "displayName": "Files - Total Count", "name": "fileext-Total Count"}}]}}], "nodeType": ["DATA_ELEMENT"], "ops": [], "withPropertyFilter": {}}, "readFromCache": true, "updateCache": false}, "owner": "{{OWNER_EMAIL}}", "req_type": "aggregateLookup"},note:"Graph query from your tenant's dashboards; replace {{OWNER_EMAIL}} with your login email"},
+ g_files_labelled:{method:"POST",path:"/privaci/v1/graph/data_request?type=aggregateLookup",body:{"args": {"aggregateLookup": {"connections": [{"relationshipType": [{"backwards": true, "label": "FILEEXT_HAS_CLS_LABEL"}], "withNode": {"connections": [], "nodeType": ["FILEEXT"], "withPropertyFilter": {}, "ops": [{"op": "ext_simplecount", "propHeader": {"description": "Files - Total Count", "displayName": "Files - Total Count", "name": "fileext-Total Count"}, "term": {"description": "Files - Total Count", "displayName": "Files - Total Count", "name": "fileext-Total Count"}}]}}], "nodeType": ["CLASSIFICATION_LABEL"], "ops": [], "withPropertyFilter": {}}, "readFromCache": true, "updateCache": false}, "owner": "{{OWNER_EMAIL}}", "req_type": "aggregateLookup"},note:"Graph query from your tenant's dashboards; replace {{OWNER_EMAIL}} with your login email"},
+ g_files_public_links:{method:"POST",path:"/privaci/v1/graph/data_request?type=aggregateLookup",body:{"args": {"aggregateLookup": {"connections": [{"relationshipType": [{"backwards": false, "label": "IAM_POLICY_ELEMENT_HAS_OBJECT_RESOURCE_SCOPE"}], "withNode": {"connections": [{"relationshipType": [{"backwards": false, "label": "IAM_RESOURCE_SCOPE_MAPS_TO_FILE"}], "withNode": {"connections": [], "nodeType": ["FILEEXT"], "withPropertyFilter": {}, "ops": [{"op": "ext_simplecount", "propHeader": {"description": "Files - Total Count", "displayName": "Files - Total Count", "name": "fileext-Total Count"}, "term": {"description": "Files - Total Count", "displayName": "Files - Total Count", "name": "fileext-Total Count"}}]}}], "nodeType": ["IAM_RESOURCE_SCOPE"], "withPropertyFilter": {}, "ops": []}}], "nodeType": ["IAM_POLICY_ELEMENT_SHARED_RESOURCE"], "ops": [], "withPropertyFilter": {"scope": {"in": ["Anonymous"]}}}, "readFromCache": true, "updateCache": false}, "owner": "{{OWNER_EMAIL}}", "req_type": "aggregateLookup"},note:"Graph query from your tenant's dashboards; replace {{OWNER_EMAIL}} with your login email"},
+ g_files_org_links:{method:"POST",path:"/privaci/v1/graph/data_request?type=aggregateLookup",body:{"args": {"aggregateLookup": {"connections": [{"relationshipType": [{"backwards": false, "label": "IAM_POLICY_ELEMENT_HAS_OBJECT_RESOURCE_SCOPE"}], "withNode": {"connections": [{"relationshipType": [{"backwards": false, "label": "IAM_RESOURCE_SCOPE_MAPS_TO_FILE"}], "withNode": {"connections": [], "nodeType": ["FILEEXT"], "withPropertyFilter": {}, "ops": [{"op": "ext_simplecount", "propHeader": {"description": "Files - Total Count", "displayName": "Files - Total Count", "name": "fileext-Total Count"}, "term": {"description": "Files - Total Count", "displayName": "Files - Total Count", "name": "fileext-Total Count"}}]}}], "nodeType": ["IAM_RESOURCE_SCOPE"], "withPropertyFilter": {}, "ops": []}}], "nodeType": ["IAM_POLICY_ELEMENT_SHARED_RESOURCE"], "ops": [], "withPropertyFilter": {"scope": {"in": ["Organization"]}}}, "readFromCache": true, "updateCache": false}, "owner": "{{OWNER_EMAIL}}", "req_type": "aggregateLookup"},note:"Graph query from your tenant's dashboards; replace {{OWNER_EMAIL}} with your login email"},
+ g_databases:{method:"POST",path:"/privaci/v1/graph/data_request?type=aggregateLookup",body:{"args": {"aggregateLookup": {"connections": [], "nodeType": ["DATABASE"], "ops": [{"op": "simplecount", "propHeader": {"description": "Database - Total Count", "displayName": "Database - Total Count", "name": "database-Total Count"}, "term": {"description": "Database - Total Count", "displayName": "Database - Total Count", "name": "database-Total Count"}}], "withPropertyFilter": {}}, "readFromCache": true, "updateCache": false}, "owner": "{{OWNER_EMAIL}}", "req_type": "aggregateLookup"},note:"Graph query from your tenant's dashboards; replace {{OWNER_EMAIL}} with your login email"},
+ g_tables_sensitive:{method:"POST",path:"/privaci/v1/graph/data_request?type=aggregateLookup",body:{"args": {"aggregateLookup": {"connections": [{"relationshipType": [{"backwards": true, "label": "DATAOBJECT_HAS_CLASSIFICATION"}], "withNode": {"connections": [], "nodeType": ["TABLE"], "withPropertyFilter": {}, "ops": [{"op": "simplecount", "propHeader": {"description": "Table - Total Count", "displayName": "Table - Total Count", "name": "table-Total Count"}, "term": {"description": "Table - Total Count", "displayName": "Table - Total Count", "name": "table-Total Count"}}]}}], "nodeType": ["DATA_ELEMENT"], "ops": [], "withPropertyFilter": {}}, "readFromCache": true, "updateCache": false}, "owner": "{{OWNER_EMAIL}}", "req_type": "aggregateLookup"},note:"Graph query from your tenant's dashboards; replace {{OWNER_EMAIL}} with your login email"},
+ g_columns_sensitive:{method:"POST",path:"/privaci/v1/graph/data_request?type=aggregateLookup",body:{"args": {"aggregateLookup": {"connections": [{"relationshipType": [{"backwards": false, "label": "COLUMNEXT_HAS_CLASSIFICATION"}], "withNode": {"connections": [], "nodeType": ["DATA_ELEMENT"], "withPropertyFilter": {}, "ops": [{"identifier": "columnext", "op": "select", "unique": true}]}}], "identifier": "columnext", "nodeType": ["COLUMNEXT"], "ops": [{"op": "simplecount", "propHeader": {"description": "Column - Total Count", "displayName": "Column - Total Count", "name": "columnext-Total Count"}, "term": {"description": "Column - Total Count", "displayName": "Column - Total Count", "name": "columnext-Total Count"}}], "withPropertyFilter": {}}, "readFromCache": true, "updateCache": false}, "owner": "{{OWNER_EMAIL}}", "req_type": "aggregateLookup"},note:"Graph query from your tenant's dashboards; replace {{OWNER_EMAIL}} with your login email"},
+ g_struct_ds_findings:{method:"POST",path:"/privaci/v1/graph/data_request?type=aggregateLookup",body:{"args": {"aggregateLookup": {"connections": [{"relationshipType": [{"backwards": false, "label": "ASSET_HAS_POSTUREFINDINGEXT"}], "withNode": {"connections": [], "nodeType": ["POSTUREFINDINGEXT"], "withPropertyFilter": {"status": {"in": ["open"]}}, "ops": [{"op": "count", "propHeader": {"description": "Finding - Count", "displayName": "Finding - Count", "name": "finding-Count"}, "term": {"description": "Finding - Count", "displayName": "Finding - Count", "name": "finding-Count"}}]}}], "nodeType": ["DATASYSTEM"], "ops": [{"order": "DECREASING", "topCount": 100}], "withPropertyFilter": {"assetDataType": {"in": ["Structured", "Hybrid"]}}}, "readFromCache": true, "updateCache": false}, "owner": "{{OWNER_EMAIL}}", "req_type": "aggregateLookup"},note:"Graph query from your tenant's dashboards; replace {{OWNER_EMAIL}} with your login email"},
+ g_m365_findings:{method:"POST",path:"/privaci/v1/graph/data_request?type=aggregateLookup",body:{"args": {"aggregateLookup": {"connections": [{"relationshipType": [{"backwards": false, "label": "ASSET_HAS_POSTUREFINDINGEXT"}], "withNode": {"connections": [], "nodeType": ["POSTUREFINDINGEXT"], "withPropertyFilter": {"status": {"eq": "open"}}, "ops": [{"identifier": "datasystem", "op": "select", "unique": true}]}}], "identifier": "datasystem", "nodeType": ["DATASYSTEM"], "ops": [{"op": "simplecount", "propHeader": {"description": "Finding Count", "displayName": "Finding Count", "name": "datasystem-Total Count"}, "term": {"description": "Finding Count", "displayName": "Finding Count", "name": "datasystem-Total Count"}}], "withPropertyFilter": {"graphAssetType": {"in": ["sharepoint_online", "onedrive_onprem", "onedrive_cloud", "onedrive", "sharepoint_online_cloud", "sharepoint_online_onprem"]}}}, "readFromCache": true, "updateCache": false, "pagination": {"page": 1, "rowsPerPage": 3}}, "owner": "{{OWNER_EMAIL}}", "req_type": "aggregateLookup"},note:"Graph query from your tenant's dashboards; replace {{OWNER_EMAIL}} with your login email"},
+ g_m365_findings_assets:{method:"POST",path:"/privaci/v1/graph/data_request?type=graphLookup",body:{"args": {"lookupQuery": {"connections": [{"relationshipType": [{"backwards": false, "label": "ASSET_HAS_POSTUREFINDINGEXT"}], "withNode": {"connections": [], "nodeType": ["POSTUREFINDINGEXT"], "withPropertyFilter": {"status": {"eq": "open"}}}}], "nodeType": ["DATASYSTEM"], "withPropertyFilter": {"graphAssetType": {"in": ["sharepoint_online", "onedrive_onprem", "onedrive_cloud", "onedrive", "sharepoint_online_cloud", "sharepoint_online_onprem"]}}}, "pagination": {"page": 1, "rowsPerPage": 100}, "requestedColumns": {"DATASYSTEM": ["dataVolume", "discoveredDocCount", "discoveredDocSize", "iaasInstanceId", "totalDocCount", "totalDocSize", "totalErroredDocCount", "totalErroredDocSize", "totalErroredTableCount", "displayName", "graphAssetType", "cloud", "region", "resourceType", "assetExists", "cloudResourceId"], "POSTUREFINDINGEXT": ["displayName", "severity", "lastChecked", "status"]}, "source": "graph-explorer"}, "owner": "{{OWNER_EMAIL}}", "req_type": "graphLookup"},note:"Graph query from your tenant's dashboards; replace {{OWNER_EMAIL}} with your login email"},
+ g_ext_sites_sensitive:{method:"POST",path:"/privaci/v1/graph/data_request?type=aggregateLookup",body:{"args": {"aggregateLookup": {"connections": [{"relationshipType": [{"backwards": true, "label": "DATASYSTEM_STORES_CLASSIFICATION"}], "withNode": {"connections": [{"relationshipType": [{"backwards": false, "label": "DATASYSTEM_CONTAINS_COLLECTION"}], "withNode": {"connections": [], "nodeType": ["SITE"], "withPropertyFilter": {"sharingCapabilities": {"in": ["ExternalUserSharingOnly", "ExternalUserAndGuestSharing", "ExistingExternalUserSharingOnly"]}}, "ops": [{"op": "simplecount", "propHeader": {"description": "Site - Count", "displayName": "Site - Count", "name": "site-Count"}, "term": {"description": "Site - Count", "displayName": "Site - Count", "name": "site-Count"}}]}}], "nodeType": ["DATASYSTEM"], "withPropertyFilter": {}, "ops": []}}], "nodeType": ["DATA_ELEMENT"], "withPropertyFilter": {"category": {"in": ["All Type", "Authentication", "Automobile", "Contact Info", "Device Identifiers", "Education", "Ethnicity", "Financial", "Government Identifiers", "Health Insurance", "Information only", "Location", "Medical", "Name", "Online Identifiers", "Physical Attributes", "Profession", "Social", "Socio Economic", "Unique identifiers"]}}}, "readFromCache": true, "updateCache": false, "pagination": {"page": 1, "rowsPerPage": 3}}, "owner": "{{OWNER_EMAIL}}", "req_type": "aggregateLookup"},note:"Graph query from your tenant's dashboards; replace {{OWNER_EMAIL}} with your login email"},
+ g_ext_sites_sensitive_list:{method:"POST",path:"/privaci/v1/graph/data_request?type=graphLookup",body:{"args": {"lookupQuery": {"connections": [{"relationshipType": [{"backwards": true, "label": "DATASYSTEM_STORES_CLASSIFICATION"}], "withNode": {"connections": [{"relationshipType": [{"backwards": false, "label": "DATASYSTEM_CONTAINS_COLLECTION"}], "withNode": {"connections": [], "nodeType": ["SITE"], "withPropertyFilter": {"sharingCapabilities": {"in": ["ExternalUserSharingOnly", "ExternalUserAndGuestSharing", "ExistingExternalUserSharingOnly"]}}}}], "nodeType": ["DATASYSTEM"], "withPropertyFilter": {}}}], "nodeType": ["DATA_ELEMENT"], "withPropertyFilter": {"category": {"in": ["All Type", "Authentication", "Automobile", "Contact Info", "Device Identifiers", "Education", "Ethnicity", "Financial", "Government Identifiers", "Health Insurance", "Information only", "Location", "Medical", "Name", "Online Identifiers", "Physical Attributes", "Profession", "Social", "Socio Economic", "Unique identifiers"]}}}, "pagination": {"page": 1, "rowsPerPage": 100}, "requestedColumns": {"DATASYSTEM": ["dataVolume", "discoveredDocCount", "discoveredDocSize", "iaasInstanceId", "totalDocCount", "totalDocSize", "totalErroredDocCount", "totalErroredDocSize", "totalErroredTableCount", "displayName", "graphAssetType", "cloud", "region", "resourceType", "assetExists", "cloudResourceId"], "DATA_ELEMENT": ["displayName", "name", "category", "systemName", "system", "personalData", "sensitiveData"], "SITE": ["displayName", "sharingCapabilities", "siteOwner", "webURL", "webID", "accountID"]}, "source": "graph-explorer"}, "owner": "{{OWNER_EMAIL}}", "req_type": "graphLookup"},note:"Graph query from your tenant's dashboards; replace {{OWNER_EMAIL}} with your login email"},
+ g_sens_files_all_users:{method:"POST",path:"/privaci/v1/graph/data_request?type=getTable",body:{"args": {"dashboard": "IAM_GRAPH", "filters": {"DATASYSTEM": {"graphAssetType": {"in": ["onedrive", "sharepoint_online"]}}, "DATA_ELEMENT": {"category": {"in": ["All Type", "Authentication", "Automobile", "Contact Info", "Device Identifiers", "Education", "Ethnicity", "Financial", "Government Identifiers", "Health Insurance", "Information only", "Location", "Medical", "Name", "Online Identifiers", "Physical Attributes", "Profession", "Social", "Socio Economic", "Unique identifiers"]}}, "IAM_PRINCIPAL_USERGROUP": {"name": {"eq": "All Company"}}}, "pagination": {"page": 1, "rowsPerPage": 50}, "sorting": {"descending": false, "gqlType": null, "sortBy": null}, "withMetrics": true}, "owner": "{{OWNER_EMAIL}}", "req_type": "getTable", "tableName": "FILEEXT"},note:"Graph query from your tenant's dashboards; replace {{OWNER_EMAIL}} with your login email"},
+ g_sites_all_users:{method:"POST",path:"/privaci/v1/graph/data_request?type=aggregateLookup",body:{"args": {"aggregateLookup": {"connections": [{"relationshipType": [{"backwards": true, "label": "IAM_POLICY_ELEMENT_HAS_SUBJ_USERGROUP"}], "withNode": {"connections": [{"relationshipType": [{"backwards": false, "label": "IAM_POLICY_ELEMENT_HAS_OBJECT_RESOURCE_SCOPE"}], "withNode": {"connections": [{"relationshipType": [{"backwards": false, "label": "IAM_RESOURCE_SCOPE_MAPS_TO_COLLECTION"}], "withNode": {"connections": [], "nodeType": ["SITE"], "withPropertyFilter": {}, "ops": [{"op": "simplecount", "propHeader": {"description": "Site - Count", "displayName": "Site - Count", "name": "site-Count"}, "term": {"description": "Site - Count", "displayName": "Site - Count", "name": "site-Count"}}]}}], "nodeType": ["IAM_RESOURCE_SCOPE"], "withPropertyFilter": {}}}], "nodeType": ["IAM_POLICY_ELEMENT"], "withPropertyFilter": {}}}], "nodeType": ["IAM_PRINCIPAL_USERGROUP"], "recurse": {"edges": ["IAM_PRINCIPAL_USERGROUP_IS_MEMBER_OF_USERGROUP"], "type": "OUT"}, "withPropertyFilter": {"displayName": {"in": ["All Company", "Everyone except external users"]}, "providerType": {"in": ["SharepointOnline", "SharepointOnlineOnprem"]}}}, "readFromCache": true, "updateCache": false, "pagination": {"page": 1, "rowsPerPage": 3}}, "owner": "{{OWNER_EMAIL}}", "req_type": "aggregateLookup"},note:"Graph query from your tenant's dashboards; replace {{OWNER_EMAIL}} with your login email"},
+ g_sites_external:{method:"POST",path:"/privaci/v1/graph/data_request?type=aggregateLookup",body:{"args": {"aggregateLookup": {"connections": [], "nodeType": ["SITE"], "ops": [{"op": "simplecount", "propHeader": {"description": "Site - Count", "displayName": "Site - Count", "name": "site-Count"}, "term": {"description": "Site - Count", "displayName": "Site - Count", "name": "site-Count"}}], "withPropertyFilter": {"sharingCapabilities": {"in": ["ExternalUserSharingOnly", "ExternalUserAndGuestSharing", "ExistingExternalUserSharingOnly"]}}}, "readFromCache": true, "updateCache": false}, "owner": "{{OWNER_EMAIL}}", "req_type": "aggregateLookup"},note:"Graph query from your tenant's dashboards; replace {{OWNER_EMAIL}} with your login email"},
+ g_sites_external_list:{method:"POST",path:"/privaci/v1/graph/data_request?type=graphLookup",body:{"args": {"lookupQuery": {"connections": [], "nodeType": ["SITE"], "withPropertyFilter": {"sharingCapabilities": {"in": ["ExternalUserSharingOnly", "ExternalUserAndGuestSharing", "ExistingExternalUserSharingOnly"]}}}, "pagination": {"page": 1, "rowsPerPage": 100}, "requestedColumns": {"SITE": ["displayName", "sharingCapabilities", "siteOwner", "webURL", "webID", "accountID"]}, "source": "graph-explorer"}, "owner": "{{OWNER_EMAIL}}", "req_type": "graphLookup"},note:"Graph query from your tenant's dashboards; replace {{OWNER_EMAIL}} with your login email"},
+ g_proc_by_bu:{method:"POST",path:"/privaci/v1/graph/data_request?type=aggregateLookup",body:{"args": {"aggregateLookup": {"connections": [], "nodeType": ["PROCESS"], "ops": [{"op": "mapcount", "order": "DECREASING", "prop": "managingOrganization", "propHeader": {"description": "Process Count", "displayName": "Process Count", "gqlType": "Int", "sortable": false, "type": "int"}}], "withPropertyFilter": {}}, "readFromCache": true, "updateCache": false}, "owner": "{{OWNER_EMAIL}}", "req_type": "aggregateLookup"},note:"Graph query from your tenant's dashboards; replace {{OWNER_EMAIL}} with your login email"},
+ g_transfers_by_bu:{method:"POST",path:"/privaci/v1/graph/data_request?type=aggregateLookup",body:{"args": {"aggregateLookup": {"connections": [{"relationshipType": [{"backwards": true, "label": "PROCESS_INVOLVES_DATA_TRANSFER"}], "withNode": {"connections": [], "nodeType": ["PROCESS"], "withPropertyFilter": {}, "ops": [{"op": "mapcount", "order": "DECREASING", "prop": "managingOrganization", "propHeader": {"description": "Process Count", "displayName": "Process Count", "gqlType": "Int", "sortable": false, "type": "int"}}]}}], "nodeType": ["DATA_TRANSFER"], "ops": [{"order": "DECREASING", "topCount": 100}], "withPropertyFilter": {}}, "readFromCache": true, "updateCache": false}, "owner": "{{OWNER_EMAIL}}", "req_type": "aggregateLookup"},note:"Graph query from your tenant's dashboards; replace {{OWNER_EMAIL}} with your login email"},
+ g_processes:{method:"POST",path:"/privaci/v1/graph/data_request?type=graphLookup",body:{"args": {"lookupQuery": {"connections": [], "nodeType": ["PROCESS"], "withPropertyFilter": {}}, "pagination": {"page": 1, "rowsPerPage": 500}, "requestedColumns": {"PROCESS": ["displayName", "managingOrganization", "dpoName", "processingEntity", "processingPurpose", "purpose", "processMapLink", "ropaReports", "automatedDecistionMaking"]}, "source": "graph-explorer"}, "owner": "{{OWNER_EMAIL}}", "req_type": "graphLookup"},note:"Graph query from your tenant's dashboards; replace {{OWNER_EMAIL}} with your login email"},
+ g_proc_transfers:{method:"POST",path:"/privaci/v1/graph/data_request?type=graphLookup",body:{"args": {"lookupQuery": {"connections": [{"relationshipType": [{"backwards": true, "label": "PROCESS_INVOLVES_DATA_TRANSFER"}], "withNode": {"connections": [], "nodeType": ["PROCESS"], "withPropertyFilter": {}}}], "nodeType": ["DATA_TRANSFER"], "withPropertyFilter": {}}, "pagination": {"page": 1, "rowsPerPage": 1000}, "requestedColumns": {"DATA_TRANSFER": ["displayName", "orgUnit", "recipientOrganization", "scope", "transferMethod", "processingActivity", "source", "sourceLocation", "destination", "destinationLocation", "stage"], "PROCESS": ["automatedDecistionMaking", "displayName", "managingOrganization", "processingEntity", "processingPurpose", "purpose", "risk", "name", "dpoName"]}, "source": "graph-explorer"}, "owner": "{{OWNER_EMAIL}}", "req_type": "graphLookup"},note:"Graph query from your tenant's dashboards; replace {{OWNER_EMAIL}} with your login email"},
+ g_proc_findings:{method:"POST",path:"/privaci/v1/graph/data_request?type=aggregateLookup",body:{"args": {"aggregateLookup": {"connections": [{"relationshipType": [{"backwards": false, "label": "PROCESS_INVOLVES_DATA_TRANSFER"}], "withNode": {"connections": [{"relationshipType": [{"backwards": true, "label": "DATASYSTEM_IS_SOURCE_OF_DATA_TRANSFER"}], "withNode": {"connections": [{"relationshipType": [{"backwards": false, "label": "ASSET_HAS_FINDING"}], "withNode": {"connections": [], "nodeType": ["SECURITY_POSTURE_FINDING"], "withPropertyFilter": {"severity": {"in": [4, 5, 3]}, "status": {"in": ["OPEN"]}}, "ops": []}}], "nodeType": ["DATASYSTEM"], "withPropertyFilter": {"displayName": {"isEmpty": false}}, "ops": []}}], "nodeType": ["DATA_TRANSFER"], "withPropertyFilter": {}, "ops": []}}], "nodeType": ["PROCESS"], "ops": [{"op": "mapcount", "order": "DECREASING", "prop": "displayName", "propHeader": {"description": "Process Count", "displayName": "Process Count", "gqlType": "Int", "sortable": false, "type": "int"}}], "withPropertyFilter": {"displayName": {"isEmpty": false}}}, "readFromCache": true, "updateCache": false}, "owner": "{{OWNER_EMAIL}}", "req_type": "aggregateLookup"},note:"Graph query from your tenant's dashboards; replace {{OWNER_EMAIL}} with your login email"},
+ ct_risk_score:{method:"GET",path:"/privaci/v1/admin/compliance/test/risk_score"},
+ ct_trend_risk:{method:"POST",path:"/privaci/v1/admin/compliance/test/general_trends",params:{limit:30,offset:0},body:{type:"risk_score"}},
+ ct_trend_open:{method:"POST",path:"/privaci/v1/admin/compliance/test/general_trends",params:{limit:30,offset:0},body:{type:"open_findings"}},
+ ct_trend_data:{method:"POST",path:"/privaci/v1/admin/compliance/test/general_trends",params:{limit:30,offset:0},body:{type:"open_data_findings"}},
+ ct_by_severity:{method:"POST",path:"/privaci/v1/graph/data_request?type=aggregateLookup",body:{"req_type": "aggregateLookup", "args": {"pagination": {"page": 1, "rowsPerPage": 5}, "aggregateLookup": {"ops": [{"var": "finding", "op": "mapcount", "by": {"var": "finding", "val": "severity"}, "header": {"key": {"description": "Key severity and value findings count", "displayName": "Severity", "gqlType": "String", "order": 1, "type": "string"}, "value": {"description": "Findings Count", "displayName": "Findings Count", "gqlType": "Int", "type": "int", "order": 2, "sortable": false}}, "order": "DECREASING", "orderType": "LOCAL"}], "nodeType": ["CONTROL_TEST"], "unique": true, "var": "test", "withPropertyFilter": {"active": {"eq": true}}, "connections": [{"relationshipType": [{"label": "CONTROL_TEST_HAS_FINDING", "backwards": false}], "withNode": {"nodeType": ["COMPLIANCE_TEST_FINDING"], "unique": true, "withPropertyFilter": {}, "var": "finding", "connections": []}}]}}},note:"Replace {{OWNER_EMAIL}} with your Securiti login email"},
+ ct_tests_failing:{method:"POST",path:"/privaci/v1/graph/data_request?type=aggregateLookup",body:{"req_type": "aggregateLookup", "owner": "{{OWNER_EMAIL}}", "args": {"pagination": {"page": 1, "rowsPerPage": 5}, "aggregateLookup": {"ops": [{"propHeader": {"description": "Number of tests that have a finding", "displayName": "Tests", "gqlType": "Int", "sortable": false, "type": "int"}, "var": "test", "unique": true, "op": "simplecount"}], "nodeType": ["CONTROL_TEST"], "var": "test", "withPropertyFilter": {"active": {"eq": true}}, "connections": [{"relationshipType": [{"label": "CONTROL_TEST_HAS_FINDING", "backwards": false}], "withNode": {"nodeType": ["COMPLIANCE_TEST_FINDING"], "unique": false, "withPropertyFilter": {"orgUnit": {"in": [1, 0]}}, "connections": []}}]}}},note:"Replace {{OWNER_EMAIL}} with your Securiti login email"},
+ ct_frameworks_failing:{method:"POST",path:"/privaci/v1/graph/data_request?type=aggregateLookup",body:{"req_type": "aggregateLookup", "owner": "{{OWNER_EMAIL}}", "args": {"pagination": {"page": 1, "rowsPerPage": 5}, "aggregateLookup": {"ops": [{"propHeader": {"description": "Number of frameworks that have a finding", "displayName": "Frameworks", "gqlType": "Int", "sortable": false, "type": "int"}, "var": "framework", "unique": true, "op": "simplecount"}], "nodeType": ["FRAMEWORK"], "var": "framework", "withPropertyFilter": {}, "connections": [{"relationshipType": [{"label": "CATEGORY_ASSOCIATED_WITH_FRAMEWORK", "backwards": true}], "withNode": {"nodeType": ["CATEGORY"], "unique": false, "withPropertyFilter": {}, "connections": [{"relationshipType": [{"label": "SUBCATEGORY_ASSOCIATED_WITH_CATEGORY", "backwards": true}], "withNode": {"nodeType": ["SUBCATEGORY"], "unique": false, "withPropertyFilter": {}, "connections": [{"relationshipType": [{"label": "CONTROL_ASSOCIATED_WITH_SUBCATEGORY", "backwards": true}], "withNode": {"nodeType": ["CONTROL"], "unique": false, "withPropertyFilter": {"active": {"eq": true}}, "connections": [{"relationshipType": [{"label": "CONTROL_EVALUATED_BY_CONTROL_TEST", "backwards": false}], "withNode": {"nodeType": ["CONTROL_TEST"], "unique": false, "withPropertyFilter": {"active": {"eq": true}}, "connections": [{"relationshipType": [{"label": "CONTROL_TEST_HAS_FINDING", "backwards": false}], "withNode": {"nodeType": ["COMPLIANCE_TEST_FINDING"], "unique": false, "withPropertyFilter": {"orgUnit": {"in": [1, 0]}}, "connections": []}}]}}]}}]}}]}}]}}},note:"Replace {{OWNER_EMAIL}} with your Securiti login email"},
+ ct_findings_total:{method:"POST",path:"/privaci/v1/graph/data_request",body:{"req_type": "aggregateLookup", "owner": "{{OWNER_EMAIL}}", "args": {"pagination": {"page": 1, "rowsPerPage": 5}, "aggregateLookup": {"ops": [{"propHeader": {"description": "Number of findings", "displayName": "findings", "gqlType": "Int", "sortable": false, "type": "int"}, "var": "finding", "unique": true, "op": "simplecount"}], "nodeType": ["CONTROL_TEST"], "unique": false, "withPropertyFilter": {"active": {"eq": true}}, "connections": [{"relationshipType": [{"label": "CONTROL_TEST_HAS_FINDING", "backwards": false}], "withNode": {"nodeType": ["COMPLIANCE_TEST_FINDING"], "var": "finding", "withPropertyFilter": {"orgUnit": {"in": [1, 0]}}, "connections": []}}]}}},note:"Replace {{OWNER_EMAIL}} with your Securiti login email"},
+ ct_top_tests:{method:"POST",path:"/privaci/v1/graph/data_request",body:{"req_type": "graphLookup", "owner": "{{OWNER_EMAIL}}", "args": {"lookupQuery": {"nodeType": ["CONTROL_TEST"], "withPropertyFilter": {"active": {"eq": true}}, "connections": [{"relationshipType": [{"backwards": false, "label": "CONTROL_TEST_HAS_FINDING"}], "withNode": {"nodeType": ["COMPLIANCE_TEST_FINDING"], "aggregate": true, "withPropertyFilter": {}, "connections": []}}]}, "pagination": {"page": 1, "rowsPerPage": 15}}},note:"Replace {{OWNER_EMAIL}} with your Securiti login email"},
+};
+const OBSOLETE_YEARS=3;   // files not modified for this many years count as obsolete
+// export-zip file names -> query names
+const ZIPMAP={files_by_ds:/^files_by_ds$/,dsr_tickets:/^dsr_tickets_p\d+$/,assessments:/^assessments_p\d+$/,consent_by_activity:/^consent_by_consented_item_activity$/,consent_by_country:/^consent_by_consent_geo_location_country$/,consent_purposes:/^consent_processing_purposes$/};
+
+
+/* ================= Data store ================= */
+let RAW={}; let SOURCE="demo"; let STAMP=null;
+const logEl=$("#calllog"); const LOGS=[];
+function log(m){LOGS.push(new Date().toLocaleTimeString("en-IN")+"  "+m);if(LOGS.length>200)LOGS.shift();logEl.textContent=LOGS.join("\n");logEl.scrollTop=1e9;}
+function rowsOf(j){if(!j)return[];const d=j.data!==undefined?j.data:j;if(Array.isArray(d))return d;if(d&&Array.isArray(d.rows)&&Array.isArray(d.header)){const h=d.header.map(c=>c.name||c);return d.rows.map(r=>Object.fromEntries(h.map((k,i)=>[k,r[i]])))}if(d&&typeof d==="object"){for(const k of["items","results","records","list","data"])if(Array.isArray(d[k]))return d[k];}return[];}
+function setStatus(k,m){const el=$("#status");el.className="status "+(k||"");el.textContent=m;}
+
+/* ================= Metrics (transform logic) ================= */
+const NAME={access:"Access (Article 11)",erasure:"Erasure (Article 12)",rectify:"Correction (Article 12)",confirmation:"Confirmation",nomination:"Nomination (Article 14)",grievance:"Grievance (Article 13)","do-not-sell":"Do not sell"};
+const IND={GOVT_ID_IND_AADHAAR_CARD_NUMBER:"Aadhaar",GOVT_ID_IND_PAN_NUMBER:"PAN",FINANCIAL_IN_VPA:"UPI ID (VPA)",FINANCIAL_RUPAY_CARD_NUMBER:"RuPay card",ID_PASSPORT_ID:"Passport",CONTACT_PHONE:"Phone number",CONTACT_EMAIL:"Email",DEMOGRAPHIC_DOB:"Date of birth",FINANCIAL_BANK_ACCOUNT:"Bank account"};
+const CRIT_IDS=["GOVT_ID_IND_AADHAAR_CARD_NUMBER","GOVT_ID_IND_PAN_NUMBER","FINANCIAL_RUPAY_CARD_NUMBER"];
+const EIGHTH=new Set(["as","bn","brx","doi","gu","hi","kn","ks","kok","mai","ml","mni","mr","ne","or","pa","sa","sat","sd","ta","te","ur"]);
+const sec=v=>!v?0:(v>1e11?v/1000:v);
+const SEVN={5:"Very High",4:"High",3:"Medium",2:"Low",1:"Very Low"}; const SEVC={5:"crit",4:"warn",3:"med",2:"ok",1:"vlow"};
+const INDIA_REG=/^(ap-south-[12]|asia-south[12]|centralindia|southindia|westindia|jioindia(west|central))$/i;
+const aggRows=n=>(R(n)||[]).filter(r=>r&&typeof r==="object"&&!Object.values(r).some(v=>v&&typeof v==="object"));
+const R=n=>RAW[n]?rowsOf(RAW[n]):null;
+const count=(arr,f)=>arr.reduce((m,x)=>{const k=f(x);m[k]=(m[k]||0)+1;return m},{});
+const sortE=o=>Object.entries(o).sort((a,b)=>b[1]-a[1]);
+function metrics(){
+  const now=Date.now()/1000, M={};
+  const T=R("dsr_tickets");
+  if(T){const open=T.filter(r=>!r.published_at), cl=T.filter(r=>r.published_at);
+    const over=open.filter(r=>r.deadline&&sec(r.deadline)<now);
+    const nm=r=>NAME[r.type_tags]||r.type_tags||"Other";
+    const byT={},byO={};T.forEach(r=>byT[nm(r)]=(byT[nm(r)]||0)+1);open.forEach(r=>byO[nm(r)]=(byO[nm(r)]||0)+1);
+    const age=r=>(now-sec(r.created_at))/86400;
+    const B=[["0–7",0,8],["8–15",8,16],["16–30",16,31],["31–60",31,61],["61–90",61,91],["> 90",91,1e9]];
+    const cd={};cl.forEach(r=>{(cd[nm(r)]=cd[nm(r)]||[]).push((sec(r.published_at)-sec(r.created_at))/86400)});
+    const wk=[];const d0=new Date();d0.setHours(0,0,0,0);d0.setDate(d0.getDate()-((d0.getDay()+6)%7));
+    for(let i=11;i>=0;i--){const s=d0.getTime()/1000-i*604800;wk.push({week:new Date(s*1000).toLocaleDateString("en-IN",{day:"numeric",month:"short"}),received:T.filter(r=>{const c=sec(r.created_at);return c>=s&&c<s+604800}).length,closed:cl.filter(r=>{const c=sec(r.published_at);return c>=s&&c<s+604800}).length})}
+    M.dsr={total:T.length,open:open.length,over:over.length,byType:sortE(byT).map(([k,v])=>({right:k,open:byO[k]||0,closed:v-(byO[k]||0)})),
+      aging:B.map(([b,lo,hi])=>({bucket:b,count:open.filter(r=>age(r)>=lo&&age(r)<hi).length,s:lo>=61?"crit":lo>=31?"warn":lo>=16?"info":"ok"})),
+      avg:Object.entries(cd).map(([k,v])=>({right:k,closed:v.length,avg:+(v.reduce((a,b)=>a+b,0)/v.length).toFixed(1)})),weeks:wk};
+    const left=r=>r.deadline?(sec(r.deadline)-now)/86400:null;
+    const DL=[["Overdue",-1e9,0,"crit"],["Due today",0,1,"crit"],["Due in 1–7 days",1,8,"warn"],["Due in 8–30 days",8,31,"info"],["Due in > 30 days",31,1e9,"ok"]];
+    M.dsr.closed=cl.length; M.dsr.onTime=cl.filter(r=>r.deadline&&sec(r.published_at)<=sec(r.deadline)).length;
+    M.dsr.paused=open.filter(r=>r.paused_at).length; M.dsr.noDeadline=open.filter(r=>!r.deadline).length;
+    M.dsr.due7=open.filter(r=>{const l=left(r);return l!=null&&l>=0&&l<8}).length;
+    M.dsr.deadlines=DL.map(([b,lo,hi,s])=>({bucket:b,count:open.filter(r=>{const l=left(r);return l!=null&&l>=lo&&l<hi}).length,s}));
+    M.dsr.queue=open.map(r=>({id:r.id,right:nm(r),opened:new Date(sec(r.created_at)*1000),deadline:r.deadline?new Date(sec(r.deadline)*1000):null,left:left(r),paused:!!r.paused_at,country:r.country||""})).sort((a,b)=>(a.left??1e9)-(b.left??1e9)).slice(0,5);}
+  const FC=RAW.dsr_form_counts&&RAW.dsr_form_counts.data; if(FC&&!Array.isArray(FC))M.forms=FC;
+  const CA=R("classif_by_attribute"),CD=R("classif_by_attribute_datasource"),CM=R("classif_by_attribute_masking"),PD=R("pd_attributes"),DS=R("datasources_list");
+  const pd={};(PD||[]).forEach(a=>pd[a.system_name]=a); const ds={};(DS||[]).forEach(d=>ds[String(d.id)]=d);
+  if(CA){const cols={};CA.forEach(r=>cols[r.attribute_keyword]=r.columns||0);
+    const masked={};(CM||[]).forEach(r=>{if(r.masking_policy_name_keyword)masked[r.attribute_keyword]=(masked[r.attribute_keyword]||0)+(r.columns||0)});
+    const rows={},stores={};(CD||[]).forEach(r=>{rows[r.attribute_keyword]=(rows[r.attribute_keyword]||0)+(r.rows||0);(stores[r.attribute_keyword]=stores[r.attribute_keyword]||new Set()).add(String(r.datasource_id))});
+    const cats={};Object.entries(cols).forEach(([k,v])=>{const c=(pd[k]&&pd[k].category_name)||"Custom";cats[c]=(cats[c]||0)+v});
+    const tot=Object.values(cols).reduce((a,b)=>a+b,0),mt=Object.values(masked).reduce((a,b)=>a+b,0);
+    M.disc={cols,masked,rows,stores,tot,mt,cats:sortE(cats).slice(0,12),hasMasking:!!CM,
+      india:Object.entries(IND).map(([k,v])=>({id:v,key:k,columns:cols[k]||0,stores:stores[k]?stores[k].size:0,rows:rows[k]||0,masked:masked[k]||0,s:CRIT_IDS.includes(k)&&cols[k]?"crit":cols[k]?"info":"mute"})),
+      heat:(CD||[]).filter(r=>CRIT_IDS.includes(r.attribute_keyword)).map(r=>({store:(ds[String(r.datasource_id)]||{}).name||("Data system "+r.datasource_id),conn:r.connector_type_id,id:IND[r.attribute_keyword],columns:r.columns,rows:r.rows})),
+      pdStores:CD?new Set(CD.map(r=>String(r.datasource_id))).size:null};}
+  if(DS){M.sys={total:DS.length,byConn:sortE(count(DS,d=>d.connector_type_id)).slice(0,10),byDep:sortE(count(DS.filter(d=>d.ds_connector_type&&d.ds_connector_type!=="none"),d=>d.ds_connector_type))};}
+  const DA=R("datamap_assets"); if(DA)M.assets={total:DA.length,gone:DA.filter(a=>a.asset_exists===false).length,mapped:DA.filter(a=>a.elements_count).length};
+  const RL=R("risk_by_level"),RS=R("risk_by_state"),RO=R("risk_by_overdue");
+  if(RL||RS||RO){const lv={};(RL||[]).forEach(r=>lv[r.level||"Unrated"]=r.n);M.risk={level:["VERY HIGH","HIGH","MEDIUM","LOW","VERY LOW","Unrated"].map(k=>({level:k,n:lv[k]||0})),state:(RS||[]).map(r=>({label:r.state,n:r.n})).sort((a,b)=>b.n-a.n),overdue:(RO||[]).filter(r=>r.overdue===true).reduce((a,r)=>a+r.n,0),total:(RO||[]).reduce((a,r)=>a+r.n,0)}; if(!RO)M.risk.overdue=null;}
+  const AS=R("alerts_by_severity_status"),AR=R("alerts_by_regulation"),AD=R("alerts_by_datasource");
+  if(AS||AR||AD){const sv=SEVN;const sevs=[...new Set((AS||[]).map(r=>r.severity))].sort((a,b)=>b-a);
+    M.alerts={open:AS?AS.filter(r=>r.status==="open").reduce((a,r)=>a+r.n,0):null,crit:(AS||[]).filter(r=>r.status==="open"&&r.severity>=5).reduce((a,r)=>a+r.n,0),
+      bySev:sevs.map(s=>({sev:sv[s]||("Severity "+s),open:0,suppressed:0,fixed:0,...Object.fromEntries((AS||[]).filter(r=>r.severity===s).map(r=>[r.status,r.n]))})),
+      byReg:(AR||[]).map(r=>({label:r.regulation||"Unmapped",n:r.n})).sort((a,b)=>b.n-a.n),
+      top:(AD||[]).sort((a,b)=>b.n-a.n).slice(0,8).map(r=>({sys:(ds[String(r.datasource_id)]||{}).name||("Data system "+r.datasource_id),n:r.n}))};}
+  const BR=R("breach_incidents"); if(BR){const op=BR.filter(b=>b.progress!==3);M.breach={open:op.length,past:op.filter(b=>b.deadline&&sec(b.deadline)<now).length,in72:op.filter(b=>now-sec(b.created_at)<=72*3600).length,
+    rows:op.sort((a,b)=>b.created_at-a.created_at).slice(0,12).map(b=>({id:b.id,name:b.name,stage:"Stage "+b.progress,days:((now-sec(b.created_at))/86400).toFixed(1),hLeft:72-(now-sec(b.created_at))/3600,deadline:b.deadline?new Date(sec(b.deadline)*1000).toLocaleDateString("en-IN",{day:"numeric",month:"short",year:"numeric"}):"—",past:!!(b.deadline&&sec(b.deadline)<now)}))};}
+  const CAc=R("consent_by_activity"); if(CAc){const a={};CAc.forEach(r=>a[r.consented_item_activity]=r.n);const tot=Object.values(a).reduce((x,y)=>x+y,0);M.consent={act:a,total:tot};}
+  const CP=R("consent_by_purpose_activity"); if(CP){const pp={};CP.forEach(r=>{(pp[r.processing_purpose]=pp[r.processing_purpose]||{})[r.consented_item_activity]=r.n});
+    (M.consent=M.consent||{}).purpose=Object.entries(pp).map(([k,v])=>({purpose:k,GRANTED:v.GRANTED||0,DECLINED:v.DECLINED||0,WITHDRAWN:v.WITHDRAWN||0,PENDING:v.PENDING||0})).sort((a,b)=>(b.GRANTED+b.DECLINED+b.WITHDRAWN+b.PENDING)-(a.GRANTED+a.DECLINED+a.WITHDRAWN+a.PENDING)).slice(0,10);
+    const mk=Object.keys(pp).find(k=>/minor|guardian|child|parent/i.test(k)); M.consent.minor=mk?{name:mk,...pp[mk]}:null;}
+  const CC=R("consent_by_country"); if(CC){(M.consent=M.consent||{}).country=CC.map(r=>({c:r.consent_geo_location_country||"Unknown",n:r.n})).sort((a,b)=>b.n-a.n);}
+  const PP=R("consent_purposes"); if(PP)M.purposes=sortE(count(PP,p=>p.category_name||"Uncategorised"));
+  const A=R("assessments"); if(A){const st=a=>+a.completion_date?"Completed":(+a.progress_percent?"In progress":"Not started");const dp=A.filter(a=>/DPIA|PIA|IMPACT/i.test(a.template_title||""));
+    M.assess={total:A.length,status:sortE(count(A,st)),type:sortE(count(A,a=>a.template_type||"Other")).slice(0,8),dpia:dp.length,dpiaOpen:dp.filter(a=>!+a.completion_date).length};}
+  const FW=R("compliance_frameworks"); if(FW){M.fw=FW.find(f=>/DPDP/i.test(f.name))||null;M.fwCount=FW.length;}
+  const V=R("vendors"); if(V){const b=[["0–39",0,40,"crit"],["40–59",40,60,"warn"],["60–79",60,80,"info"],["80–100",80,101,"ok"]];M.vendors={total:V.length,bands:b.map(([l,lo,hi,s])=>({label:l,n:V.filter(v=>(v.score||0)>=lo&&(v.score||0)<hi).length,s}))};}
+  const N=R("privacy_notices"); if(N){const langs=new Set();N.forEach(n=>(n.lang||"").split(",").filter(Boolean).forEach(l=>langs.add(l.toLowerCase())));const e=[...langs].filter(l=>EIGHTH.has(l));
+    M.notices={state:sortE(count(N,n=>n.state||"UNKNOWN")),eighth:e,total:N.length,published:N.filter(n=>n.state==="PUBLISHED").length};}
+  // ---- unstructured files
+  const FD=R("files_by_ds"),FU=R("files_unique_by_ds"),FS=R("files_sensitive_by_ds"),FL=R("files_by_label"),FF=R("files_by_format"),FO=R("files_obsolete_by_ds"),FK=R("files_skip_reasons");
+  const dsName=id=>(ds[String(id)]||{}).name||("Data system "+id), dsConn=id=>(ds[String(id)]||{}).connector_type_id||"";
+  const isM365=id=>/sharepoint|onedrive|microsoft_365|office_365|outlook|teams|exchange/i.test(dsConn(id));
+  if(FD){const by={};const add=(rows,k,f)=>(rows||[]).forEach(r=>{const id=String(r.data_source_id);(by[id]=by[id]||{id,files:0,bytes:0,unique:null,sensitive:0,obsolete:0,obBytes:0})[k]=+(r[f]||0)});
+    add(FD,"files","files");add(FD,"bytes","bytes");if(FU)add(FU,"unique","unique_files");add(FS,"sensitive","files");add(FO,"obsolete","files");add(FO,"obBytes","bytes");
+    const rows=Object.values(by).map(x=>({...x,name:dsName(x.id),conn:dsConn(x.id),m365:isM365(x.id),dups:x.unique!=null?Math.max(0,x.files-x.unique):null}));
+    const sum=(a,k)=>a.reduce((t,x)=>t+(x[k]||0),0);
+    const TRIV=/^(tmp|temp|log|bak|old|~|ds_store|thumbs\.db|lnk|cache|crdownload|part)$/i;
+    const triv=(FF||[]).filter(r=>TRIV.test(String(r.file_format||"").replace(/^\./,""))).reduce((t,r)=>t+(+r.files||0),0);
+    const files=sum(rows,"files"),dups=FU?sum(rows,"dups"):null,obs=FO?sum(rows,"obsolete"):null;
+    M.files={rows,files,bytes:sum(rows,"bytes"),dups,obs,triv:FF?triv:null,sensitive:FS?sum(rows,"sensitive"):null,
+      rot:(dups||0)+(obs||0)+(triv||0),m365:rows.filter(r=>r.m365),
+      formats:(FF||[]).map(r=>({label:String(r.file_format||"unknown"),n:+r.files||0,bytes:+r.bytes||0})).sort((a,b)=>b.n-a.n).slice(0,10),
+      labels:FL?FL.map(r=>({label:r.classification_label_keyword,n:+r.files||0})).sort((a,b)=>b.n-a.n):null,
+      skips:FK?FK.map(r=>({label:r.skip_reason||"Unspecified",n:+r.files||0})).sort((a,b)=>b.n-a.n).slice(0,8):null};
+    if(M.files.labels){M.files.labelled=M.files.labels.reduce((t,x)=>t+x.n,0);}}
+  const IP=R("insights_policies"); if(IP){M.ipol={total:IP.length,active:IP.filter(x=>x.is_active).length,byCat:sortE(count(IP,x=>x.category_name||"Other")),rot:IP.filter(x=>/rot/i.test((x.category_name||"")+" "+(x.name||""))),
+    list:IP.slice(0,10).map(x=>({name:x.name,cat:x.category_name,active:x.is_active,last:x.last_eval_at?new Date(sec(x.last_eval_at)*1000):null}))};}
+  const AP=R("alerts_by_policy"); if(AP){const byP={};AP.forEach(r=>{const k=r.policy_name||"Unnamed policy";(byP[k]=byP[k]||{policy:k,open:0,fixed:0,suppressed:0,total:0});byP[k][r.status]=(byP[k][r.status]||0)+r.n;byP[k].total+=r.n});
+    const all=Object.values(byP).sort((a,b)=>b.open-a.open);M.apol={all,sharing:all.filter(x=>/public|extern|anyone|anonymous|shar|guest|link/i.test(x.policy))};}
+  // ---- security posture findings
+  const SS=R("sp_by_severity_status");
+  if(SS){const open=SS.filter(r=>r.status==="open");const tot=open.reduce((t,r)=>t+r.findings,0);
+    const bySev=[5,4,3,2,1].map(k=>({sev:k,label:SEVN[k],n:open.filter(r=>+r.severity===k).reduce((t,r)=>t+r.findings,0)}));
+    const st={};SS.forEach(r=>st[r.status]=(st[r.status]||0)+r.findings);
+    M.sp={open:tot,vh:bySev[0].n,h:bySev[1].n,bySev,status:st,resolved:(st.fixed||0)+(st.passed||0)+(st.suppressed||0)+(st.closed||0)};}
+  const sum=a=>a.reduce((t,r)=>t+(+r.findings||0),0);
+  const CA2=R("sp_open_by_cloud_account"); if(CA2){(M.sp=M.sp||{}).accounts=CA2.slice().sort((a,b)=>b.findings-a.findings);const c={};CA2.forEach(r=>c[r.cloud_provider_type]=(c[r.cloud_provider_type]||0)+r.findings);M.sp.clouds=sortE(c);}
+  const RG=R("sp_open_by_region"); if(RG){M.sp=M.sp||{};M.sp.regions=RG.map(r=>({label:(r.cloud_provider_region||"global")+" · "+String(r.cloud_provider_type||"").toUpperCase(),region:r.cloud_provider_region||"",n:r.findings,india:INDIA_REG.test(r.cloud_provider_region||"")})).sort((a,b)=>b.n-a.n);const t=sum(RG);M.sp.indiaShare=t?100*M.sp.regions.filter(x=>x.india).reduce((a,x)=>a+x.n,0)/t:0;M.sp.regTotal=t;}
+  const SV=R("sp_open_by_service"); if(SV){M.sp=M.sp||{};M.sp.services=SV.map(r=>({label:String(r.cloud_provider_type||"").toUpperCase()+" · "+(r.service_type||"other"),n:r.findings})).sort((a,b)=>b.n-a.n).slice(0,10);}
+  const CT=R("sp_open_by_category"); if(CT){M.sp=M.sp||{};M.sp.cats=CT.map(r=>({label:r.rule_category||"Other",n:r.findings})).sort((a,b)=>b.n-a.n).slice(0,10);}
+  const RU=R("sp_open_by_rule"); if(RU){M.sp=M.sp||{};const by={};RU.forEach(r=>{const k=r.rule_name_keyword||"Unnamed rule";(by[k]=by[k]||{rule:k,n:0,sev:0});by[k].n+=r.findings;by[k].sev=Math.max(by[k].sev,+r.severity||0)});M.sp.rules=Object.values(by).sort((a,b)=>b.sev-a.sev||b.n-a.n).slice(0,12);}
+  const PO=R("sp_open_by_policy"); if(PO){M.sp=M.sp||{};M.sp.policies=PO.map(r=>({policy:r.policy_name_keyword||"Unnamed policy",n:r.findings})).sort((a,b)=>b.n-a.n);}
+  const AA=R("sp_open_by_asset"); if(AA){M.sp=M.sp||{};M.sp.assets=AA.slice().sort((a,b)=>b.findings-a.findings).slice(0,12);}
+  const AS2=R("sp_open_by_assignee"); if(AS2){M.sp=M.sp||{};const t=sum(AS2),u=AS2.filter(r=>!+r.assignee_id).reduce((a,r)=>a+r.findings,0);M.sp.unassigned=u;M.sp.assignTotal=t;M.sp.owners=AS2.filter(r=>+r.assignee_id).length;}
+  const O30=R("sp_opened_30d"),C30=R("sp_resolved_30d");
+  if(O30||C30){M.sp=M.sp||{};const days=[];const d0=new Date();d0.setHours(0,0,0,0);
+    const key=r=>{const v=r.created_at??r.modified_at??r.key;const d=new Date(typeof v==="number"?(v>1e11?v:v*1000):v);d.setHours(0,0,0,0);return d.getTime()};
+    const om={},cm={};(O30||[]).forEach(r=>om[key(r)]=(om[key(r)]||0)+r.findings);(C30||[]).forEach(r=>cm[key(r)]=(cm[key(r)]||0)+r.findings);
+    for(let i=29;i>=0;i--){const t=d0.getTime()-i*864e5;days.push({day:new Date(t).toLocaleDateString("en-IN",{day:"numeric",month:"short"}),opened:om[t]||0,resolved:cm[t]||0})}
+    M.sp.flow=days;M.sp.opened30=days.reduce((a,x)=>a+x.opened,0);M.sp.resolved30=days.reduce((a,x)=>a+x.resolved,0);}
+  // ---- compliance control tests
+  const RS2=RAW.ct_risk_score&&RAW.ct_risk_score.data; if(RS2&&!Array.isArray(RS2))M.ct={score:RS2.risk_score,prev:RS2.previous_risk_score};
+  const tr=n=>(R(n)||[]).filter(x=>x.collected_at).sort((a,b)=>a.collected_at-b.collected_at).map(x=>({day:new Date(x.collected_at).toLocaleDateString("en-IN",{day:"numeric",month:"short"}),v:+x.count||0}));
+  if(R("ct_trend_risk")){(M.ct=M.ct||{}).trendRisk=tr("ct_trend_risk");}
+  if(R("ct_trend_open")||R("ct_trend_data")){M.ct=M.ct||{};const a=tr("ct_trend_open"),b=tr("ct_trend_data");M.ct.trendOpen=a.map((x,i)=>({day:x.day,open:x.v,data:(b[i]||{}).v||0}));}
+  const one=n=>{const r=aggRows(n)[0];return r?(r["__AGGR__.count"]??Object.values(r)[0]):null};
+  if(R("ct_findings_total")||R("ct_tests_failing")||R("ct_frameworks_failing")){M.ct=M.ct||{};M.ct.findings=one("ct_findings_total");M.ct.tests=one("ct_tests_failing");M.ct.frameworks=one("ct_frameworks_failing");}
+  const CS=aggRows("ct_by_severity"); if(CS.length){(M.ct=M.ct||{}).bySev=[5,4,3,2,1].map(k=>({sev:k,label:SEVN[k],n:(CS.find(r=>+r.key===k)||{}).value||0}));}
+  const TT=RAW.ct_top_tests&&RAW.ct_top_tests.data&&RAW.ct_top_tests.data.graphLookup; if(TT){(M.ct=M.ct||{}).top=(TT.traversedPaths||[]).map(p=>{const q=((p.pathElements||[])[0]||{}).properties||{};return{name:q.displayName||q.testName||("Test "+q.testId),cloud:q.cloud||"",risk:q.riskFactor||"",sev:+q.severity||0,n:p.aggregateCount||0,frameworks:q.numberOfFrameworks||0}}).sort((a,b)=>b.n-a.n);}
+  // ---- AI security
+  const AIRE=/bedrock|sagemaker|vertex|openai|azure ?ml|azureml|machine learning|\bai\b|\bml\b|model|agent|knowledge ?base|llm|gen ?ai|copilot|gemini/i;
+  const num=v=>+v||0;
+  const MA=aggRows("ai_models_agents"); if(R("ai_models_agents")){const g=k=>r=>num(r["__AGGR__."+k]);
+    const rows=MA.map(r=>({type:r.assetType||"Unknown",cloud:r.cloud||"",models:g("modelCount")(r),agents:g("aiagents")(r),ds:g("datasystems")(r),files:g("fileCount")(r),sde:g("sdeCount")(r),mis:g("misconfigs")(r)}));
+    M.ai=M.ai||{};M.ai.rows=rows.sort((a,b)=>b.sde-a.sde||b.models-a.models);M.ai.modelsSens=rows.filter(r=>r.sde>0).reduce((t,r)=>t+r.models,0);M.ai.sdeTotal=rows.reduce((t,r)=>t+r.sde,0);
+    M.ai.toxicModels=rows.filter(r=>r.sde>0&&r.mis>0).reduce((t,r)=>t+r.models,0);M.ai.modelsFromGrid=rows.reduce((t,r)=>t+r.models,0);M.ai.agentsFromGrid=rows.reduce((t,r)=>t+r.agents,0);}
+  const c1=n=>{if(!R(n))return null;const r=aggRows(n)[0];return r?num(r["__AGGR__.count"]??r["__AGGR__.total"]??Object.values(r)[0]):0};
+  ["ai_count_models","ai_count_agents","ai_count_kb","ai_agents_vhh","ai_models_vhh","ai_agents_kb"].forEach(n=>{const v=c1(n);if(v!=null){M.ai=M.ai||{};M.ai[n]=v}});
+  const PL=aggRows("ai_platforms"); if(R("ai_platforms")){M.ai=M.ai||{};M.ai.platforms=PL.map(r=>({name:r.displayName||r.key||"Platform",type:r.assetType||"",cloud:r.cloud||"",region:r.region||"",agents:num(r["__AGGR__.aiagent"]),models:num(r["__AGGR__.aimodel"]),mis:num(r["__AGGR__.misconfigs"])})).sort((a,b)=>b.mis-a.mis);}
+  const FC2=aggRows("ai_agent_findings_by_category"); if(R("ai_agent_findings_by_category")){M.ai=M.ai||{};M.ai.cats=FC2.map(r=>({label:r.ruleCategory||r.key||"Other",n:num(r.count??r.value??r["__AGGR__.count"])})).filter(x=>x.n).sort((a,b)=>b.n-a.n);}
+  const AT=R("sp_open_by_asset_type_sev"); if(AT){M.ai=M.ai||{};const ai=AT.filter(r=>AIRE.test(String(r.asset_type||"")));M.ai.spTotal=ai.reduce((t,r)=>t+r.findings,0);M.ai.spVHH=ai.filter(r=>+r.severity>=4).reduce((t,r)=>t+r.findings,0);
+    const bt={};ai.forEach(r=>bt[r.asset_type]=(bt[r.asset_type]||0)+r.findings);M.ai.spByType=sortE(bt).slice(0,10);}
+  const TA=RAW.ct_tests_all&&RAW.ct_tests_all.data&&RAW.ct_tests_all.data.graphLookup; if(TA){M.ai=M.ai||{};
+    const tests=(TA.traversedPaths||[]).map(p=>{const q=((p.pathElements||[])[0]||{}).properties||{};return{name:q.displayName||q.testName||"",desc:q.description||"",cloud:q.cloud||"",risk:q.riskFactor||"",sev:+q.severity||0,n:p.aggregateCount||0,target:q.targetAssetType||""}});
+    const ait=tests.filter(t=>AIRE.test(t.name+" "+t.target));M.ai.tests=ait.sort((a,b)=>b.sev-a.sev||b.n-a.n);
+    const T=re=>ait.filter(t=>re.test(t.name+" "+t.desc+" "+t.risk));
+    M.ai.combos=[
+      {k:"pub",c:"AI asset + publicly exposed data source",why:"A model or agent reads from, or is reachable through, storage open to the internet. Anyone can poison or extract the data.",list:T(/public|external|internet|exposure|anonymous/i)},
+      {k:"enc",c:"AI asset + sensitive data without customer-managed keys",why:"Training data, sessions or knowledge bases hold personal data but are not encrypted with keys you control.",list:T(/encrypt|cmk|cmek|kms|customer.managed/i)},
+      {k:"priv",c:"AI agent + excessive permissions",why:"Agents with broad roles can act on systems far beyond their purpose (OWASP LLM06, excessive agency).",list:T(/permission|privileg|role|admin|agency|access polic|iam/i)},
+      {k:"log",c:"AI asset + no logging or monitoring",why:"Prompts, outputs and data access are not recorded, so misuse or a breach cannot be detected or reported in time.",list:T(/log|monitor|trace|audit/i)}
+    ].map(x=>({...x,tests:x.list.length,findings:x.list.reduce((t,y)=>t+y.n,0),sev:Math.max(0,...x.list.map(y=>y.sev))}));}
+  const IR=aggRows("iam_roles_sensitive"); if(R("iam_roles_sensitive")){M.iam=IR.map(r=>({role:r.displayName||"Role",provider:r.providerType||"",users:num(r["__AGGR__.userCount"]),sde:num(r["__AGGR__.pdCount"])})).sort((a,b)=>b.sde-a.sde).slice(0,12);}
+  // ---- graph widgets from the tenant's own dashboards
+  const gNum=n=>{if(!R(n))return null;const r=aggRows(n);if(!r.length)return 0;const v=Object.values(r[0]).find(x=>typeof x==="number");return v==null?0:v};
+  const gMap=n=>{if(!R(n))return null;return aggRows(n).map(r=>{const vals=Object.entries(r);const lab=vals.find(([k,v])=>typeof v==="string");const num=vals.find(([k,v])=>typeof v==="number");return{label:lab?lab[1]:(r.key!=null?String(r.key):"Unassigned"),n:num?num[1]:0}}).filter(x=>x.n).sort((a,b)=>b.n-a.n)};
+  const gPaths=n=>{const d=RAW[n]&&RAW[n].data;const g=d&&(d.graphLookup||(d.data&&d.data.graphLookup));if(!g)return null;return(g.traversedPaths||[]).map(p=>{const o={};(p.pathElements||[]).forEach(e=>{if(e.elementType==="NODE"||e.properties)o[e.elementLabel]=Object.assign(o[e.elementLabel]||{},e.properties||{})});return o})};
+  M.g={};
+  ["g_files_total","g_files_volume","g_files_sensitive","g_files_labelled","g_files_public_links","g_files_org_links","g_databases","g_tables_sensitive","g_columns_sensitive","g_m365_findings","g_ext_sites_sensitive","g_sites_all_users","g_sites_external"].forEach(n=>{const v=gNum(n);if(v!=null)M.g[n]=v});
+  const sd=gMap("g_struct_ds_findings"); if(sd)M.g.structDs=sd.slice(0,12);
+  const pb=gMap("g_proc_by_bu"); if(pb)M.g.procByBU=pb;
+  const tb=gMap("g_transfers_by_bu"); if(tb)M.g.trByBU=tb;
+  const pf=gMap("g_proc_findings"); if(pf)M.g.procFind=pf.slice(0,12);
+  const ma=gPaths("g_m365_findings_assets"); if(ma){const by={};ma.forEach(o=>{const d=o.DATASYSTEM||{};const k=d.displayName||"Data system";const f=o.POSTUREFINDINGEXT||{};(by[k]=by[k]||{name:k,type:d.graphAssetType||"",docs:d.discoveredDocCount||d.totalDocCount||0,size:d.discoveredDocSize||d.totalDocSize||0,n:0,vh:0});by[k].n++;if(+f.severity>=4)by[k].vh++});M.g.m365Assets=Object.values(by).sort((a,b)=>b.vh-a.vh||b.n-a.n).slice(0,12);}
+  const es=gPaths("g_ext_sites_sensitive_list"); if(es){const by={};es.forEach(o=>{const st=o.SITE||{};const k=st.webURL||st.displayName||"Site";(by[k]=by[k]||{site:st.displayName||k,url:st.webURL||"",sharing:st.sharingCapabilities||"",owner:st.siteOwner||"",elements:new Set()});const de=o.DATA_ELEMENT||{};if(de.displayName||de.name)by[k].elements.add(de.displayName||de.name)});M.g.extSites=Object.values(by).map(x=>({...x,elements:[...x.elements]})).sort((a,b)=>b.elements.length-a.elements.length).slice(0,15);}
+  const sx=gPaths("g_sites_external_list"); if(sx){M.g.sitesExt=sx.map(o=>o.SITE||{}).map(st=>({site:st.displayName||"",url:st.webURL||"",sharing:st.sharingCapabilities||"",owner:st.siteOwner||""})).slice(0,15);}
+  const pr=gPaths("g_processes"); if(pr){M.g.processes=pr.map(o=>o.PROCESS||{});M.g.procAuto=M.g.processes.filter(x=>String(x.automatedDecistionMaking).toLowerCase()==="true"||x.automatedDecistionMaking===true||/yes/i.test(String(x.automatedDecistionMaking))).length;}
+  const pt=gPaths("g_proc_transfers"); if(pt){const IN=/india|^in$|mumbai|delhi|bengal|hyderabad|chennai|pune/i;M.g.transfers=pt.map(o=>({t:o.DATA_TRANSFER||{},p:o.PROCESS||{}})).map(({t,p})=>({process:p.displayName||p.name||"",bu:p.managingOrganization||"",purpose:p.processingPurpose||p.purpose||"",recipient:t.recipientOrganization||"",from:String(t.sourceLocation||""),to:String(t.destinationLocation||""),method:t.transferMethod||"",scope:t.scope||""}));
+    M.g.trAbroad=M.g.transfers.filter(x=>x.to&&!IN.test(x.to)).length;}
+  const st=RAW.g_sens_files_all_users&&RAW.g_sens_files_all_users.data; if(st){const arr=Array.isArray(st)?st:(st.data||st.rows||st.results||st.items||[]);M.g.sensAll={total:st.count??st.totalCount??st.total??arr.length,rows:arr.slice(0,12)};}
+  return M;
+}
+
+/* ================= Rendering helpers ================= */
+const COL={ok:"var(--ok)",warn:"var(--warn)",med:"var(--med)",crit:"var(--crit)",info:"var(--accent)",mute:"var(--muted)",vlow:"var(--vlow)",purple:"var(--purple)"};
+const pill=(s,t)=>`<span class="pill p-${s}">${esc(t)}</span>`;
+function hbars(items,{label,value,max,color}){if(!items.length)return empty();const mx=max||Math.max(...items.map(i=>i[value]),1);
+  return `<div class="hbars">${items.map(i=>`<div class="hb"><span title="${esc(i[label])}">${esc(i[label])}</span><div class="track"><i style="width:${i[value]/mx*100}%;background:${COL[(color&&color(i))||"info"]}"></i></div><span class="v">${fmt(i[value])}</span></div>`).join("")}</div>`;}
+function stacked(items,{label,series,colors}){if(!items.length)return empty();const mx=Math.max(...items.map(i=>series.reduce((a,s)=>a+(i[s]||0),0)),1);
+  return `<div class="legend">${series.map((s,k)=>`<span><i style="background:${COL[colors[k]]}"></i>${esc(s.charAt(0)+s.slice(1).toLowerCase())}</span>`).join("")}</div><div class="hbars">${items.map(i=>{const t=series.reduce((a,s)=>a+(i[s]||0),0);return `<div class="hb"><span title="${esc(i[label])}">${esc(i[label])}</span><div class="track">${series.map((s,k)=>`<i title="${esc(s)}: ${fmt(i[s]||0)}" style="width:${(i[s]||0)/mx*100}%;background:${COL[colors[k]]}"></i>`).join("")}</div><span class="v">${fmt(t)}</span></div>`}).join("")}</div>`;}
+function donut(items,{label,value,color}){const tot=items.reduce((a,i)=>a+i[value],0);if(!tot)return empty();const S=120,r=46,c=2*Math.PI*r;let off=0;
+  const arcs=items.map(i=>{const len=c*i[value]/tot;const s=`<circle cx="60" cy="60" r="${r}" transform="rotate(-90 60 60)" style="fill:none;stroke:${COL[color(i)]};stroke-width:18" stroke-dasharray="${Math.max(len-1.5,0).toFixed(1)} ${c.toFixed(1)}" stroke-dashoffset="${(-off).toFixed(1)}"/>`;off+=len;return s}).join("");
+  return `<div class="donut"><svg width="${S}" height="${S}" viewBox="0 0 120 120" role="img" aria-label="Breakdown">${arcs}<text x="60" y="64" text-anchor="middle" style="fill:var(--fg);font-family:var(--f-display);font-size:17px;font-weight:700">${fmt(tot)}</text></svg><div class="legend">${items.map(i=>`<span><i style="background:${COL[color(i)]}"></i>${esc(i[label])} · <span class="mono">${fmt(i[value])}</span></span>`).join("")}</div></div>`;}
+function line(items,x,series){if(!items.length)return empty();const W=560,H=170,L=30,Rr=10,T=10,B=22,iw=W-L-Rr,ih=H-T-B;const mx=Math.max(4,...items.flatMap(i=>series.map(s=>i[s.k])));const top=Math.ceil(mx/4)*4;
+  const X=i=>L+i*iw/(items.length-1||1),Y=v=>T+ih-v/top*ih;let g="";for(let k=0;k<=4;k++){const v=top*k/4;g+=`<line x1="${L}" x2="${W-Rr}" y1="${Y(v)}" y2="${Y(v)}" style="stroke:var(--line)"/><text x="${L-5}" y="${Y(v)+3}" text-anchor="end">${v}</text>`}
+  const xl=items.map((it,i)=>i%2===1?`<text x="${X(i)}" y="${H-6}" text-anchor="middle">${esc(it[x])}</text>`:"").join("");
+  const p=series.map((s,si)=>{const pts=items.map((it,i)=>`${X(i).toFixed(1)},${Y(it[s.k]).toFixed(1)}`).join(" ");return (si===0?`<polygon points="${L},${Y(0)} ${pts} ${X(items.length-1)},${Y(0)}" style="fill:${COL[s.c]};opacity:.1"/>`:"")+`<polyline points="${pts}" style="fill:none;stroke:${COL[s.c]};stroke-width:2${s.dash?";stroke-dasharray:5 4":""}"/>`}).join("");
+  return `<div class="legend">${series.map(s=>`<span><i style="background:${COL[s.c]}"></i>${esc(s.l)}</span>`).join("")}</div><div style="overflow-x:auto"><svg viewBox="0 0 ${W} ${H}" style="width:100%;min-width:360px;height:auto;display:block" role="img" aria-label="Weekly trend">${g}${xl}${p}</svg></div>`;}
+function table(rows,cols){if(!rows.length)return empty("No rows.");return `<div class="tw"><table><thead><tr>${cols.map(c=>`<th class="${c.n?"n":""}">${esc(c.h)}</th>`).join("")}</tr></thead><tbody>${rows.map(r=>`<tr>${cols.map(c=>`<td class="${c.n?"n":""}">${c.f?c.f(r):esc(fmt(r[c.k]))}</td>`).join("")}</tr>`).join("")}</tbody></table></div>`;}
+const empty=(m)=>`<div class="empty">${m||"No data returned."}</div>`;
+const lev=(v,warn,crit)=>v==null?"mute":v>=crit?"crit":v>=warn?"warn":"ok";
+
+/* ================= Widget definitions (shared by all three dashboards) ================= */
+// id, title, personas, w (grid span), deps (queries), kind, render(M) -> {html} or kpi {v,u,sub,s}
+const WIDGETS=[
+ {id:"dsr_open",t:"DSR open",p:["DPO"],w:2,deps:["dsr_tickets"],kpi:M=>M.dsr&&{v:M.dsr.open,sub:`${fmt(M.dsr.paused)} paused · ${fmt(M.dsr.noDeadline)} without deadline`,s:lev(M.dsr.open,50,100)}},
+ {id:"dsr_closed",t:"DSR closed",p:["DPO"],w:2,deps:["dsr_tickets"],kpi:M=>M.dsr&&{v:M.dsr.closed,sub:`${M.dsr.closed?Math.round(100*M.dsr.onTime/M.dsr.closed):0}% closed before deadline`,s:M.dsr.closed&&M.dsr.onTime/M.dsr.closed<.8?"warn":"ok"}},
+ {id:"dsr_due7",t:"DSR due in next 7 days",p:["DPO"],w:2,deps:["dsr_tickets"],kpi:M=>M.dsr&&{v:M.dsr.due7,sub:"as of "+new Date().toLocaleDateString("en-IN",{day:"numeric",month:"short",year:"numeric"}),s:lev(M.dsr.due7,1,10)}},
+ {id:"dsr_overdue",t:"DSR overdue",p:["DPO","CISO"],w:2,deps:["dsr_tickets"],kpi:M=>M.dsr&&{v:M.dsr.over,sub:`${M.dsr.open?Math.round(100*M.dsr.over/M.dsr.open):0}% of open DSRs, as of today`,s:lev(M.dsr.over,1,10)}},
+ {id:"aadhaar",t:"Unmasked Aadhaar columns",p:["DPO","CISO"],w:2,deps:["classif_by_attribute","classif_by_attribute_datasource","classif_by_attribute_masking"],kpi:M=>M.disc&&(()=>{const k="GOVT_ID_IND_AADHAAR_CARD_NUMBER",v=(M.disc.cols[k]||0)-(M.disc.masked[k]||0);return{v,sub:`in ${M.disc.stores[k]?M.disc.stores[k].size:0} data stores`,s:v?"crit":"ok"}})()},
+ {id:"pan",t:"Unmasked PAN columns",p:["DPO","CISO"],w:2,deps:["classif_by_attribute","classif_by_attribute_datasource","classif_by_attribute_masking"],kpi:M=>M.disc&&(()=>{const k="GOVT_ID_IND_PAN_NUMBER",v=(M.disc.cols[k]||0)-(M.disc.masked[k]||0);return{v,sub:`in ${M.disc.stores[k]?M.disc.stores[k].size:0} data stores`,s:v?"crit":"ok"}})()},
+ {id:"masking",t:"Personal data columns masked",p:["CISO"],w:2,deps:["classif_by_attribute","classif_by_attribute_masking"],kpi:M=>M.disc&&{v:M.disc.tot?(100*M.disc.mt/M.disc.tot).toFixed(1):0,u:"%",sub:`${fmt(M.disc.mt)} of ${fmt(M.disc.tot)} columns`,s:M.disc.mt/M.disc.tot<.5?"crit":M.disc.mt/M.disc.tot<.9?"warn":"ok"}},
+ {id:"alerts_open",t:"Open policy alerts",p:["CISO"],w:2,deps:["alerts_by_severity_status"],kpi:M=>M.alerts&&{v:M.alerts.open,sub:`${fmt(M.alerts.crit)} critical`,s:lev(M.alerts.open,1,25)}},
+ {id:"breach_open",t:"Open breach incidents",p:["CISO","DPO"],w:2,deps:["breach_incidents"],kpi:M=>M.breach&&{v:M.breach.open,sub:`${M.breach.past} past deadline · ${M.breach.in72} inside 72 h`,s:M.breach.in72?"crit":lev(M.breach.open,1,5)}},
+ {id:"risk_overdue",t:"Risks past remediation date",p:["CISO","CIO"],w:2,deps:["risk_by_overdue"],kpi:M=>M.risk&&{v:M.risk.overdue,sub:`of ${fmt(M.risk.total)} risks`,s:lev(M.risk.overdue,1,20)}},
+ {id:"consent_withdrawn",t:"Consents withdrawn",p:["DPO"],w:2,deps:["consent_by_activity"],kpi:M=>M.consent&&M.consent.act&&{v:M.consent.act.WITHDRAWN||0,sub:`${M.consent.total?(100*(M.consent.act.WITHDRAWN||0)/M.consent.total).toFixed(1):0}% of ${fmt(M.consent.total)} records`,s:"info"}},
+ {id:"minor_consent",t:"Guardian consent for minors",p:["DPO"],w:2,deps:["consent_by_purpose_activity"],kpi:M=>M.consent&&M.consent.purpose&&(M.consent.minor?{v:M.consent.minor.GRANTED||0,sub:`granted · ${fmt(M.consent.minor.DECLINED||0)} declined · ${fmt(M.consent.minor.WITHDRAWN||0)} withdrawn`,s:"info"}:{v:"None",sub:"No minor or guardian purpose found (Article 9)",s:"warn"})},
+ {id:"dpia_open",t:"Impact assessments not completed",p:["DPO"],w:2,deps:["assessments"],kpi:M=>M.assess&&{v:M.assess.dpiaOpen,sub:`of ${fmt(M.assess.dpia)} PIA / DPIA`,s:lev(M.assess.dpiaOpen,1,10)}},
+ {id:"notice_langs",t:"Notice languages (Eighth Schedule)",p:["DPO"],w:2,deps:["privacy_notices"],kpi:M=>M.notices&&{v:M.notices.eighth.length,u:"/ 22",sub:M.notices.eighth.length?M.notices.eighth.join(", "):"English only",s:M.notices.eighth.length<5?"crit":M.notices.eighth.length<12?"warn":"ok"}},
+ {id:"dpdpa_fw",t:"India DPDPA framework",p:["DPO","CIO"],w:2,deps:["compliance_frameworks"],kpi:M=>M.fwCount!=null&&(M.fw?{v:M.fw.controls,sub:`controls · ${fmt(M.fw.total_rules)} rules · ${M.fw.status?"enabled":"disabled"}`,s:M.fw.status?"info":"warn"}:{v:"Off",sub:"Framework not found in tenant",s:"crit"})},
+ {id:"stores_pd",t:"Data systems holding personal data",p:["CIO","CISO"],w:2,deps:["classif_by_attribute_datasource","datasources_list"],kpi:M=>M.disc&&{v:M.disc.pdStores,sub:M.sys?`of ${fmt(M.sys.total)} connected systems`:"",s:"info"}},
+ {id:"assets",t:"Data map assets",p:["CIO"],w:2,deps:["datamap_assets"],kpi:M=>M.assets&&{v:M.assets.total,sub:`${fmt(M.assets.mapped)} with data elements · ${fmt(M.assets.gone)} gone`,s:M.assets.mapped/M.assets.total<.2?"warn":"ok"}},
+ {id:"vendors_low",t:"Vendors scoring below 40",p:["CIO","DPO"],w:2,deps:["vendors"],kpi:M=>M.vendors&&{v:M.vendors.bands[0].n,sub:`of ${fmt(M.vendors.total)} vendors`,s:lev(M.vendors.bands[0].n,1,25)}},
+
+ {id:"india_ids",t:"Indian PII/SPI discovered",p:["DPO","CISO","CIO"],w:8,deps:["classif_by_attribute","classif_by_attribute_datasource","classif_by_attribute_masking","pd_attributes"],html:M=>M.disc&&table(M.disc.india,[{h:"Identifier",f:r=>`<b>${esc(r.id)}</b>`},{h:"Columns",k:"columns",n:1},{h:"Data stores",k:"stores",n:1},{h:"Rows",k:"rows",n:1},{h:"Masked",f:r=>`<span class="mono">${fmt(r.masked)}</span>`},{h:"Risk",f:r=>r.columns?pill(r.s,r.s==="crit"?"Mask now":"Review"):pill("mute","Not found")}])+`<div class="hint">Voter ID, Indian driving licence, GSTIN and ABHA need custom data elements in Securiti before scans can find them.</div>`},
+ {id:"india_heat",t:"Where India specific sensitive data resides",p:["CISO","DPO"],w:4,deps:["classif_by_attribute_datasource","datasources_list"],html:M=>M.disc&&table(M.disc.heat.sort((a,b)=>b.columns-a.columns),[{h:"Data store",f:r=>`<span class="mono">${esc(r.store)}</span><div class="hint">${esc(r.conn)}</div>`},{h:"ID",k:"id"},{h:"Cols",k:"columns",n:1},{h:"Rows",k:"rows",n:1}])},
+ {id:"dsr_deadline",t:"DSR deadline timeline",p:["DPO"],w:4,deps:["dsr_tickets"],html:M=>M.dsr&&hbars(M.dsr.deadlines,{label:"bucket",value:"count",color:i=>i.s})+`<div class="hint">Open DSRs by days left to deadline, counted from today.</div>`},
+ {id:"dsr_queue",t:"DSR queue by deadline: top 5",p:["DPO"],w:8,deps:["dsr_tickets"],html:M=>M.dsr&&table(M.dsr.queue,[{h:"DSR",f:r=>`<span class="mono">#${esc(r.id)}</span>`},{h:"Right",k:"right"},{h:"Opened",f:r=>esc(r.opened.toLocaleDateString("en-IN",{day:"numeric",month:"short",year:"numeric"}))},{h:"Deadline",f:r=>r.deadline?esc(r.deadline.toLocaleDateString("en-IN",{day:"numeric",month:"short",year:"numeric"})):"—"},{h:"Days left",f:r=>r.left==null?pill("mute","No deadline"):r.left<0?pill("crit",Math.ceil(-r.left)+" d overdue"):r.left<8?pill("warn",Math.floor(r.left)+" d"):pill("ok",Math.floor(r.left)+" d")},{h:"Status",f:r=>r.paused?pill("mute","Paused"):pill("info","Open")}])},
+ {id:"dsr_type",t:"DSR by request type",p:["DPO"],w:6,deps:["dsr_tickets"],html:M=>M.dsr&&stacked(M.dsr.byType,{label:"right",series:["open","closed"],colors:["warn","ok"]})},
+ {id:"dsr_aging",t:"DSR age since received (days)",p:["DPO"],w:3,deps:["dsr_tickets"],html:M=>M.dsr&&hbars(M.dsr.aging,{label:"bucket",value:"count",color:i=>i.s})+`<div class="hint">DPDP Rules cap grievance replies at 90 days.</div>`},
+ {id:"dsr_avg",t:"DSR average days to close",p:["DPO"],w:3,deps:["dsr_tickets"],html:M=>M.dsr&&table(M.dsr.avg,[{h:"Right",k:"right"},{h:"Closed",k:"closed",n:1},{h:"Avg days",k:"avg",n:1}])},
+ {id:"dsr_trend",t:"DSR received vs closed per week",p:["DPO","CIO"],w:6,deps:["dsr_tickets"],html:M=>M.dsr&&line(M.dsr.weeks,"week",[{k:"received",l:"Received",c:"info"},{k:"closed",l:"Closed",c:"ok",dash:1}])},
+ {id:"consent_status",t:"Consent records by status",p:["DPO"],w:4,deps:["consent_by_activity"],html:M=>M.consent&&M.consent.act&&donut(sortE(M.consent.act).map(([k,v])=>({label:k.replace("_"," ").toLowerCase(),key:k,n:v})),{label:"label",value:"n",color:i=>({GRANTED:"ok",DECLINED:"warn",WITHDRAWN:"crit",PENDING:"info"}[i.key]||"mute")})},
+ {id:"consent_purpose",t:"Consent by processing purpose",p:["DPO"],w:8,deps:["consent_by_purpose_activity"],html:M=>M.consent&&M.consent.purpose&&stacked(M.consent.purpose,{label:"purpose",series:["GRANTED","DECLINED","WITHDRAWN","PENDING"],colors:["ok","warn","crit","info"]})},
+ {id:"consent_country",t:"Consent records by country",p:["DPO","CIO"],w:4,deps:["consent_by_country"],html:M=>M.consent&&M.consent.country&&(hbars(M.consent.country.slice(0,8),{label:"c",value:"n",color:i=>i.c==="IN"?"crit":"info"})+`<div class="hint">India (IN): ${fmt((M.consent.country.find(x=>x.c==="IN")||{}).n||0)} records</div>`)},
+ {id:"purposes",t:"Processing purposes by category",p:["DPO"],w:4,deps:["consent_purposes"],html:M=>M.purposes&&hbars(M.purposes.map(([k,v])=>({label:k,n:v})),{label:"label",value:"n"})},
+ {id:"pd_cat",t:"Personal data columns by category",p:["CISO","CIO"],w:6,deps:["classif_by_attribute","pd_attributes"],html:M=>M.disc&&hbars(M.disc.cats.map(([k,v])=>({label:k,n:v})),{label:"label",value:"n",color:i=>/Government|Financial|Medical|Health/.test(i.label)?"crit":"info"})},
+ {id:"risk_level",t:"Open risks by level",p:["CISO","DPO","CIO"],w:4,deps:["risk_by_level"],html:M=>M.risk&&hbars(M.risk.level,{label:"level",value:"n",color:i=>({"VERY HIGH":"crit",HIGH:"warn",MEDIUM:"med",LOW:"ok","VERY LOW":"ok"}[i.level]||"mute")})+`<div class="relevance"><b>Why it matters:</b> these risks come from your assessments and the Securiti risk register. Very High and High risks usually mean a missing or weak security safeguard, which Article 8(5) makes a legal duty. Failing to take reasonable safeguards carries the largest penalty in the Act’s Schedule, up to ₹250 crore. Close or formally accept them before May 2027.</div>`},
+ {id:"risk_state",t:"Risks by treatment state",p:["CISO"],w:4,deps:["risk_by_state"],html:M=>M.risk&&donut(M.risk.state,{label:"label",value:"n",color:i=>({FLAGGED:"crit",REDUCED:"ok",RETAINED:"warn"}[i.label]||"info")})},
+ {id:"alerts_sev",t:"Policy alerts by severity",p:["CISO"],w:4,deps:["alerts_by_severity_status"],html:M=>M.alerts&&stacked(M.alerts.bySev,{label:"sev",series:["open","suppressed","fixed"],colors:["crit","mute","ok"]})},
+ {id:"alerts_reg",t:"Policy alerts by regulation",p:["CISO","DPO"],w:4,deps:["alerts_by_regulation"],html:M=>M.alerts&&(hbars(M.alerts.byReg,{label:"label",value:"n"})+(M.alerts.byReg.some(r=>/DPDP|India/i.test(r.label))?"":`<div class="hint">No alerts map to India DPDPA yet. Add DPDPA to your data policies.</div>`))},
+ {id:"alerts_top",t:"Data systems with most alerts",p:["CISO","CIO"],w:4,deps:["alerts_by_datasource","datasources_list"],html:M=>M.alerts&&table(M.alerts.top,[{h:"Data system",f:r=>`<span class="mono">${esc(r.sys)}</span>`},{h:"Alerts",k:"n",n:1}])},
+ {id:"breach_tbl",t:"Breach incidents and reporting clocks",p:["CISO","DPO"],w:12,deps:["breach_incidents"],html:M=>M.breach&&table(M.breach.rows,[{h:"ID",f:r=>`<span class="mono">${esc(r.id)}</span>`},{h:"Incident",k:"name"},{h:"Stage",k:"stage"},{h:"Open (days)",k:"days",n:1},{h:"72-hour Board report",f:r=>r.hLeft>0?pill("crit",Math.floor(r.hLeft)+" h left"):pill("mute","Window passed")},{h:"Deadline",f:r=>r.past?pill("crit",r.deadline):esc(r.deadline)}])},
+ {id:"assess_status",t:"Assessments by status",p:["DPO","CIO"],w:4,deps:["assessments"],html:M=>M.assess&&donut(M.assess.status.map(([k,v])=>({label:k,n:v})),{label:"label",value:"n",color:i=>({Completed:"ok","In progress":"info","Not started":"warn"}[i.label])})},
+ {id:"assess_type",t:"Assessments by template type",p:["DPO"],w:4,deps:["assessments"],html:M=>M.assess&&hbars(M.assess.type.map(([k,v])=>({label:k,n:v})),{label:"label",value:"n"})},
+ {id:"vendor_scores",t:"Vendors by assessment score",p:["DPO","CISO","CIO"],w:4,deps:["vendors"],html:M=>M.vendors&&hbars(M.vendors.bands,{label:"label",value:"n",color:i=>i.s})},
+ {id:"notice_state",t:"Privacy notices",p:["DPO"],w:4,deps:["privacy_notices"],html:M=>M.notices&&donut(M.notices.state.map(([k,v])=>({label:k.toLowerCase(),key:k,n:v})),{label:"label",value:"n",color:i=>i.key==="PUBLISHED"?"ok":i.key==="DRAFT"?"warn":"mute"})},
+ {id:"sys_conn",t:"Connected data systems by type",p:["CIO"],w:6,deps:["datasources_list"],html:M=>M.sys&&hbars(M.sys.byConn.map(([k,v])=>({label:k,n:v})),{label:"label",value:"n"})},
+ // ---- files, labelling, duplicates, ROT
+ {id:"rot_est",t:"ROT files (estimate)",p:["CIO"],w:2,deps:["files_by_ds","files_unique_by_ds","files_obsolete_by_ds","files_by_format"],kpi:M=>M.files&&{v:M.files.files?(100*M.files.rot/M.files.files).toFixed(1):0,u:"%",sub:`${fmt(M.files.rot)} of ${fmt(M.files.files)} files`,s:M.files.rot/M.files.files>.3?"crit":M.files.rot/M.files.files>.15?"warn":"ok"}},
+ {id:"dup_files",t:"Duplicate files",p:["CIO","CISO"],w:2,deps:["files_by_ds","files_unique_by_ds"],kpi:M=>M.files&&M.files.dups!=null&&{v:M.files.dups,sub:`${M.files.files?(100*M.files.dups/M.files.files).toFixed(1):0}% of scanned files share a hash`,s:M.files.dups/M.files.files>.2?"warn":"info"}},
+ {id:"obs_files",t:`Files untouched ${OBSOLETE_YEARS}+ years`,p:["CIO","DPO"],w:2,deps:["files_obsolete_by_ds","files_by_ds"],kpi:M=>M.files&&M.files.obs!=null&&{v:M.files.obs,sub:`${M.files.files?(100*M.files.obs/M.files.files).toFixed(1):0}% · retention review under Article 8(7)`,s:M.files.obs/M.files.files>.25?"warn":"info"}},
+ {id:"storage",t:"Scanned file storage",p:["CIO"],w:2,deps:["files_by_ds"],kpi:M=>M.files&&{v:bytes(M.files.bytes),sub:`${fmt(M.files.files)} files in ${fmt(M.files.rows.length)} data systems`,s:"info"}},
+ {id:"label_cov",t:"Files with a sensitivity label",p:["CISO","DPO"],w:2,deps:["files_by_label","files_by_ds"],kpi:M=>M.files&&M.files.labels&&{v:M.files.files?(100*M.files.labelled/M.files.files).toFixed(1):0,u:"%",sub:`${fmt(M.files.labelled)} labelled · ${fmt(Math.max(0,M.files.files-M.files.labelled))} unlabelled`,s:M.files.labelled/M.files.files<.5?"crit":M.files.labelled/M.files.files<.9?"warn":"ok"}},
+ {id:"m365_sens",t:"Sensitive files in Microsoft 365",p:["CISO","DPO"],w:2,deps:["files_sensitive_by_ds","files_by_ds","datasources_list"],kpi:M=>M.files&&M.files.sensitive!=null&&(()=>{const s=M.files.m365.reduce((t,r)=>t+r.sensitive,0),f=M.files.m365.reduce((t,r)=>t+r.files,0);return{v:s,sub:`in ${M.files.m365.filter(r=>r.sensitive).length} SharePoint / OneDrive / M365 systems · ${f?(100*s/f).toFixed(0):0}% of their files`,s:s?"warn":"ok"}})()},
+ {id:"sharing_alerts",t:"Open sharing-exposure alerts",p:["CISO"],w:2,deps:["alerts_by_policy"],kpi:M=>M.apol&&{v:M.apol.sharing.reduce((t,x)=>t+x.open,0),sub:M.apol.sharing.length?`from ${M.apol.sharing.length} public / external sharing policies`:"No sharing policies have alerts",s:M.apol.sharing.some(x=>x.open)?"crit":"ok"}},
+ {id:"rot_policies",t:"ROT and file insights policies",p:["CIO"],w:2,deps:["insights_policies"],kpi:M=>M.ipol&&{v:M.ipol.active,u:`/ ${M.ipol.total}`,sub:`active · ${M.ipol.rot.length} ROT policies`,s:M.ipol.active?"info":"warn"}},
+ {id:"m365_table",t:"SharePoint, OneDrive and M365 systems with sensitive data",p:["CISO","DPO","CIO"],w:8,deps:["files_sensitive_by_ds","files_by_ds","files_unique_by_ds","datasources_list"],html:M=>M.files&&table(M.files.m365.sort((a,b)=>b.sensitive-a.sensitive),[{h:"Data system",f:r=>`<span class="mono">${esc(r.name)}</span><div class="hint">${esc(r.conn)}</div>`},{h:"Files",k:"files",n:1},{h:"Sensitive",f:r=>`<span class="mono">${fmt(r.sensitive)}</span>`},{h:"Share",f:r=>r.files?((100*r.sensitive/r.files).toFixed(0)+"%"):"—"},{h:"Duplicates",f:r=>`<span class="mono">${fmt(r.dups)}</span>`},{h:"Size",f:r=>`<span class="mono">${bytes(r.bytes)}</span>`}])+`<div class="hint">Site-level detail comes from your Securiti dashboards below, when they include SharePoint widgets.</div>`},
+ {id:"sharing_tbl",t:"Policies flagging public or external sharing",p:["CISO"],w:4,deps:["alerts_by_policy"],html:M=>M.apol&&(M.apol.sharing.length?table(M.apol.sharing,[{h:"Policy",k:"policy"},{h:"Open",f:r=>r.open?pill("crit",fmt(r.open)):"0"},{h:"Fixed",k:"fixed",n:1}]):empty("No alerts from policies about public links, anyone-links or external sharing. Create a Data Access Governance policy for SharePoint and OneDrive sharing to track this."))},
+ {id:"labels",t:"Files by sensitivity label",p:["CISO","DPO"],w:4,deps:["files_by_label"],html:M=>M.files&&M.files.labels&&hbars(M.files.labels.slice(0,10),{label:"label",value:"n",color:i=>/restrict|confidential|secret|highly/i.test(i.label)?"crit":/internal/i.test(i.label)?"warn":"info"})},
+ {id:"rot_tbl",t:"ROT by data system",p:["CIO"],w:8,deps:["files_by_ds","files_unique_by_ds","files_obsolete_by_ds","datasources_list"],html:M=>M.files&&table(M.files.rows.map(r=>({...r,rot:(r.dups||0)+(r.obsolete||0)})).sort((a,b)=>b.rot-a.rot).slice(0,12),[{h:"Data system",f:r=>`<span class="mono">${esc(r.name)}</span><div class="hint">${esc(r.conn)}</div>`},{h:"Files",k:"files",n:1},{h:"Duplicates",f:r=>`<span class="mono">${fmt(r.dups)}</span>`},{h:`Untouched ${OBSOLETE_YEARS}+ y`,k:"obsolete",n:1},{h:"ROT share",f:r=>r.files?pill(r.rot/r.files>.3?"crit":r.rot/r.files>.15?"warn":"ok",(100*r.rot/r.files).toFixed(0)+"%"):"—"},{h:"Reclaimable",f:r=>`<span class="mono">${bytes(r.obBytes)}</span>`}])+`<div class="hint">ROT = duplicates + files not modified for ${OBSOLETE_YEARS}+ years + temporary formats. Overlaps can be counted twice, so treat it as an upper estimate.</div>`},
+ {id:"rot_mix",t:"ROT breakdown",p:["CIO"],w:4,deps:["files_by_ds","files_unique_by_ds","files_obsolete_by_ds","files_by_format"],html:M=>M.files&&donut([{label:"Redundant (duplicates)",n:M.files.dups||0,c:"warn"},{label:`Obsolete (${OBSOLETE_YEARS}+ years)`,n:M.files.obs||0,c:"crit"},{label:"Trivial (temp / log)",n:M.files.triv||0,c:"mute"}].filter(x=>x.n),{label:"label",value:"n",color:i=>i.c})},
+ {id:"formats",t:"File insights: top file formats",p:["CIO"],w:4,deps:["files_by_format"],html:M=>M.files&&M.files.formats.length&&hbars(M.files.formats,{label:"label",value:"n"})},
+ {id:"skips",t:"Files skipped by scans",p:["CIO"],w:4,deps:["files_skip_reasons"],html:M=>M.files&&M.files.skips&&(M.files.skips.length?hbars(M.files.skips,{label:"label",value:"n",color:()=>"warn"}):empty("No skipped files."))},
+ {id:"ipol_tbl",t:"File insights and ROT policies",p:["CIO"],w:4,deps:["insights_policies"],html:M=>M.ipol&&table(M.ipol.list,[{h:"Policy",k:"name"},{h:"Type",k:"cat"},{h:"State",f:r=>r.active?pill("ok","Active"):pill("mute","Off")},{h:"Last run",f:r=>r.last?esc(r.last.toLocaleDateString("en-IN",{day:"numeric",month:"short"})):"—"}])}
+ ,{id:"sys_dep",t:"Data systems by deployment",p:["CIO"],w:4,deps:["datasources_list"],html:M=>M.sys&&donut(M.sys.byDep.map(([k,v])=>({label:k,n:v})),{label:"label",value:"n",color:i=>i.label==="cloud"?"info":"ok"})}
+ // ---- Security findings
+ ,{id:"sp_open",t:"Open security posture findings",w:3,deps:["sp_by_severity_status"],kpi:M=>M.sp&&M.sp.open!=null&&{v:M.sp.open,sub:`${fmt(M.sp.resolved||0)} fixed, passed, suppressed or closed`,s:M.sp.vh?"crit":M.sp.open?"warn":"ok"}}
+ ,{id:"sp_vhh",t:"Very High and High findings",w:3,deps:["sp_by_severity_status"],kpi:M=>M.sp&&M.sp.bySev&&{v:M.sp.vh+M.sp.h,sub:`${fmt(M.sp.vh)} Very High · ${fmt(M.sp.h)} High · ${M.sp.open?(100*(M.sp.vh+M.sp.h)/M.sp.open).toFixed(0):0}% of open`,s:M.sp.vh?"crit":M.sp.h?"warn":"ok"}}
+ ,{id:"ct_score",t:"Asset posture score",w:3,deps:["ct_risk_score"],kpi:M=>M.ct&&M.ct.score!=null&&{v:M.ct.score,u:"/ 100",sub:M.ct.prev!=null?(M.ct.score===M.ct.prev?"No change since last run":(M.ct.score>M.ct.prev?"▲ ":"▼ ")+Math.abs(M.ct.score-M.ct.prev)+" since last run"):"",s:M.ct.score>=80?"ok":M.ct.score>=60?"med":"crit"}}
+ ,{id:"sp_unassigned",t:"Open findings with no assignee",w:3,deps:["sp_open_by_assignee"],kpi:M=>M.sp&&M.sp.assignTotal!=null&&{v:M.sp.assignTotal?(100*M.sp.unassigned/M.sp.assignTotal).toFixed(1):0,u:"%",sub:`${fmt(M.sp.unassigned)} findings · ${fmt(M.sp.owners)} people own the rest`,s:M.sp.unassigned/M.sp.assignTotal>.5?"crit":"warn"}}
+ ,{id:"sp_flow30",t:"Opened vs resolved, last 30 days",w:3,deps:["sp_opened_30d","sp_resolved_30d"],kpi:M=>M.sp&&M.sp.flow&&{v:M.sp.opened30-M.sp.resolved30,sub:`net change · ${fmt(M.sp.opened30)} opened · ${fmt(M.sp.resolved30)} resolved`,s:M.sp.opened30>M.sp.resolved30?"warn":"ok"}}
+ ,{id:"sp_india",t:"Open findings in India cloud regions",w:3,deps:["sp_open_by_region"],kpi:M=>M.sp&&M.sp.regions&&{v:M.sp.indiaShare.toFixed(1),u:"%",sub:`${fmt(M.sp.regions.filter(x=>x.india).reduce((a,x)=>a+x.n,0))} of ${fmt(M.sp.regTotal)} findings are in Mumbai, Hyderabad, Pune or other Indian regions`,s:"info"}}
+ ,{id:"sp_sev",t:"Open findings by risk severity",w:4,deps:["sp_by_severity_status"],html:M=>M.sp&&M.sp.bySev&&donut(M.sp.bySev.filter(x=>x.n),{label:"label",value:"n",color:i=>SEVC[i.sev]})}
+ ,{id:"sp_flow",t:"Security posture findings: opened vs resolved",w:8,deps:["sp_opened_30d","sp_resolved_30d"],html:M=>M.sp&&M.sp.flow&&line(M.sp.flow,"day",[{k:"opened",l:"Opened",c:"crit"},{k:"resolved",l:"Resolved",c:"ok",dash:1}])+`<div class="hint">Daily, last 30 days. Resolved covers fixed, passed, suppressed and closed findings.</div>`}
+ ,{id:"sp_cloud",t:"Open findings by cloud provider",w:4,deps:["sp_open_by_cloud_account"],html:M=>M.sp&&M.sp.clouds&&donut(M.sp.clouds.map(([k,v])=>({label:String(k).toUpperCase(),n:v})),{label:"label",value:"n",color:i=>({AWS:"warn",GCP:"info",AZURE:"purple"}[i.label]||"mute")})}
+ ,{id:"sp_region",t:"Open findings by cloud region",w:4,deps:["sp_open_by_region"],html:M=>M.sp&&M.sp.regions&&hbars(M.sp.regions.slice(0,10),{label:"label",value:"n",color:i=>i.india?"ok":"info"})+`<div class="hint">Green bars are Indian regions. Findings elsewhere point to personal data stored abroad; check transfer rules under Article 16.</div>`}
+ ,{id:"sp_account",t:"Open findings by cloud account",w:4,deps:["sp_open_by_cloud_account"],html:M=>M.sp&&M.sp.accounts&&table(M.sp.accounts.slice(0,8),[{h:"Cloud",f:r=>esc(String(r.cloud_provider_type||"").toUpperCase())},{h:"Account",f:r=>`<span class="mono">${esc(r.cloud_provider_account_id)}</span>`},{h:"Findings",k:"findings",n:1}])}
+ ,{id:"sp_service",t:"Open findings by cloud service",w:6,deps:["sp_open_by_service"],html:M=>M.sp&&M.sp.services&&hbars(M.sp.services,{label:"label",value:"n"})}
+ ,{id:"sp_assets",t:"Assets with most open findings",w:6,deps:["sp_open_by_asset"],html:M=>M.sp&&M.sp.assets&&table(M.sp.assets,[{h:"Asset",f:r=>`<span class="mono">${esc(r.asset_name_keyword)}</span>`},{h:"Type",f:r=>esc(r.asset_type||"")},{h:"Cloud",f:r=>esc(String(r.cloud_provider_type||"").toUpperCase())},{h:"Findings",k:"findings",n:1}])}
+ ,{id:"sp_category",t:"Open findings by rule category",w:6,deps:["sp_open_by_category"],html:M=>M.sp&&M.sp.cats&&hbars(M.sp.cats,{label:"label",value:"n",color:i=>/encrypt|key|privileg|access|public|expos/i.test(i.label)?"warn":"info"})+`<div class="hint">Encryption, key management and access categories map most directly to the safeguards expected under Article 8(5).</div>`}
+ ,{id:"sp_policy",t:"Open findings by posture policy",w:6,deps:["sp_open_by_policy"],html:M=>M.sp&&M.sp.policies&&table(M.sp.policies.slice(0,8),[{h:"Policy",k:"policy"},{h:"Findings",k:"n",n:1}])}
+ ,{id:"sp_rules",t:"Top failing security rules",w:12,deps:["sp_open_by_rule"],html:M=>M.sp&&M.sp.rules&&table(M.sp.rules,[{h:"Rule",k:"rule"},{h:"Severity",f:r=>r.sev?pill(SEVC[r.sev]==="vlow"?"ok":SEVC[r.sev],SEVN[r.sev]):"—"},{h:"Open findings",k:"n",n:1}])+`<div class="hint">Sorted by severity, then by number of open findings. Fixing one rule usually closes all of its findings.</div>`}
+ ,{id:"ct_findings",t:"Open control test findings",w:3,deps:["ct_findings_total"],kpi:M=>M.ct&&M.ct.findings!=null&&{v:M.ct.findings,sub:"from active compliance control tests",s:M.ct.findings?"warn":"ok"}}
+ ,{id:"ct_tests",t:"Control tests failing",w:3,deps:["ct_tests_failing"],kpi:M=>M.ct&&M.ct.tests!=null&&{v:M.ct.tests,sub:"active tests with at least one finding",s:M.ct.tests?"warn":"ok"}}
+ ,{id:"ct_frameworks",t:"Frameworks affected",w:3,deps:["ct_frameworks_failing"],kpi:M=>M.ct&&M.ct.frameworks!=null&&{v:M.ct.frameworks,sub:"frameworks with a failing control, e.g. ISO 27001, India DPDPA",s:M.ct.frameworks?"med":"ok"}}
+ ,{id:"ct_sev",t:"Control test findings by severity",w:4,deps:["ct_by_severity"],html:M=>M.ct&&M.ct.bySev&&donut(M.ct.bySev.filter(x=>x.n),{label:"label",value:"n",color:i=>SEVC[i.sev]})}
+ ,{id:"ct_trend",t:"Asset posture score trend",w:8,deps:["ct_trend_risk"],html:M=>M.ct&&M.ct.trendRisk&&M.ct.trendRisk.length&&line(M.ct.trendRisk.map(x=>({day:x.day,score:x.v})),"day",[{k:"score",l:"Posture score",c:"info"}])+`<div class="hint">Securiti weights open findings by severity; higher is better.</div>`}
+ ,{id:"ct_top",t:"Top failing control tests",w:12,deps:["ct_top_tests"],html:M=>M.ct&&M.ct.top&&table(M.ct.top,[{h:"Control test",k:"name"},{h:"Risk factor",f:r=>r.risk?pill(/exposure|escalation|unprotected/i.test(r.risk)?"warn":"info",r.risk):"—"},{h:"Cloud",k:"cloud"},{h:"Severity",f:r=>r.sev?pill(SEVC[r.sev]==="vlow"?"ok":SEVC[r.sev],SEVN[r.sev]):"—"},{h:"Frameworks",k:"frameworks",n:1},{h:"Findings",k:"n",n:1}])}
+ ,{id:"ct_open_trend",t:"Open control test findings trend",w:6,deps:["ct_trend_open","ct_trend_data"],html:M=>M.ct&&M.ct.trendOpen&&M.ct.trendOpen.length&&line(M.ct.trendOpen,"day",[{k:"open",l:"All open findings",c:"purple"},{k:"data",l:"Data findings",c:"info",dash:1}])}
+
+ // ---- AI security
+ ,{id:"ai_models",t:"AI models",w:3,deps:["ai_count_models","ai_models_agents"],kpi:M=>M.ai&&(M.ai.ai_count_models!=null||M.ai.modelsFromGrid!=null)&&{v:M.ai.ai_count_models??M.ai.modelsFromGrid,sub:"discovered across cloud AI platforms",s:"info"}}
+ ,{id:"ai_agents",t:"AI agents",w:3,deps:["ai_count_agents"],kpi:M=>M.ai&&M.ai.ai_count_agents!=null&&{v:M.ai.ai_count_agents,sub:M.ai.ai_agents_kb!=null?`${fmt(M.ai.ai_agents_kb)} connected to a knowledge base`:"discovered agents",s:"info"}}
+ ,{id:"ai_kb",t:"AI knowledge bases",w:3,deps:["ai_count_kb"],kpi:M=>M.ai&&M.ai.ai_count_kb!=null&&{v:M.ai.ai_count_kb,sub:"retrieval stores feeding agents (RAG)",s:"info"}}
+ ,{id:"ai_platforms_n",t:"AI platforms",w:3,deps:["ai_platforms"],kpi:M=>M.ai&&M.ai.platforms&&{v:M.ai.platforms.length,sub:[...new Set(M.ai.platforms.map(p=>String(p.cloud).toUpperCase()).filter(Boolean))].join(", ")||"Bedrock, SageMaker, Vertex AI, Azure ML",s:"info"}}
+ ,{id:"ai_models_sens",t:"AI models with access to sensitive data",w:3,deps:["ai_models_agents"],kpi:M=>M.ai&&M.ai.rows&&{v:M.ai.modelsSens,sub:`${fmt(M.ai.sdeTotal)} sensitive data elements in their training or source data systems`,s:M.ai.modelsSens?"crit":"ok"}}
+ ,{id:"ai_toxic_kpi",t:"Toxic: sensitive data + misconfigured AI",w:3,deps:["ai_models_agents"],kpi:M=>M.ai&&M.ai.rows&&{v:M.ai.toxicModels,sub:"AI models reading sensitive data that also have open misconfigurations",s:M.ai.toxicModels?"crit":"ok"}}
+ ,{id:"ai_agents_vhh",t:"AI agents with Very High or High findings",w:3,deps:["ai_agents_vhh"],kpi:M=>M.ai&&M.ai.ai_agents_vhh!=null&&{v:M.ai.ai_agents_vhh,sub:M.ai.ai_count_agents?`of ${fmt(M.ai.ai_count_agents)} agents`:"open misconfigurations",s:M.ai.ai_agents_vhh?"crit":"ok"}}
+ ,{id:"ai_sp_findings",t:"Open posture findings on AI assets",w:3,deps:["sp_open_by_asset_type_sev"],kpi:M=>M.ai&&M.ai.spTotal!=null&&{v:M.ai.spTotal,sub:`${fmt(M.ai.spVHH)} Very High or High`,s:M.ai.spVHH?"crit":M.ai.spTotal?"warn":"ok"}}
+ ,{id:"ai_sensitive_tbl",t:"Sensitive data accessible to AI models",w:12,deps:["ai_models_agents"],html:M=>M.ai&&M.ai.rows&&table(M.ai.rows.slice(0,12),[{h:"Model type",f:r=>`<span class="mono">${esc(r.type)}</span>`},{h:"Cloud",f:r=>esc(String(r.cloud).toUpperCase())},{h:"Models",k:"models",n:1},{h:"Agents",k:"agents",n:1},{h:"Source data systems",k:"ds",n:1},{h:"Files",k:"files",n:1},{h:"Sensitive data elements",f:r=>r.sde?pill("crit",fmt(r.sde)):"0"},{h:"Open misconfigs",f:r=>r.mis?pill("warn",fmt(r.mis)):"0"},{h:"Toxic",f:r=>r.sde&&r.mis?pill("crit","Yes"):pill("ok","No")}])+`<div class="hint">Source data systems are the data systems that hold datasets for each model. A row is toxic when the model reads sensitive data and also has open misconfigurations.</div>`}
+ ,{id:"ai_toxic_tbl",t:"Toxic combinations on AI",w:12,deps:["ct_tests_all","ai_models_agents","ai_agents_vhh"],html:M=>M.ai&&(M.ai.combos||M.ai.rows)&&table([].concat(M.ai.rows?[{c:"AI model + sensitive training data + open misconfiguration",why:"The model learns from or retrieves personal data held in systems that are themselves misconfigured, the shortest path from a misconfiguration to a personal data breach.",tests:"—",findings:M.ai.toxicModels,unit:"models",sev:M.ai.toxicModels?5:0}]:[],M.ai.ai_agents_vhh!=null?[{c:"AI agent + Very High or High misconfiguration",why:"Agents act on other systems, so a critical misconfiguration on the agent is a direct route to data.",tests:"—",findings:M.ai.ai_agents_vhh,unit:"agents",sev:M.ai.ai_agents_vhh?4:0}]:[],(M.ai.combos||[])),[{h:"Combination",f:r=>`<b>${esc(r.c)}</b><div class="hint">${esc(r.why)}</div>`},{h:"Failing tests",f:r=>`<span class="mono">${esc(fmt(r.tests))}</span>`},{h:"Affected",f:r=>`<span class="mono">${fmt(r.findings)}</span> <span class="hint">${esc(r.unit||"findings")}</span>`},{h:"Severity",f:r=>r.sev?pill(SEVC[r.sev]==="vlow"?"ok":SEVC[r.sev],SEVN[r.sev]):pill("ok","None found")}])}
+ ,{id:"ai_cats",t:"Highly critical findings on AI assets, by rule category",w:6,deps:["ai_agent_findings_by_category"],html:M=>M.ai&&M.ai.cats&&(M.ai.cats.length?hbars(M.ai.cats,{label:"label",value:"n",color:i=>/encrypt|key/i.test(i.label)?"warn":/access|privileg|public/i.test(i.label)?"crit":"info"}):empty("No Very High or High findings on AI agents, models or knowledge bases."))}
+ ,{id:"ai_by_type",t:"Open posture findings by AI asset type",w:6,deps:["sp_open_by_asset_type_sev"],html:M=>M.ai&&M.ai.spByType&&(M.ai.spByType.length?hbars(M.ai.spByType.map(([k,v])=>({label:k,n:v})),{label:"label",value:"n"}):empty("No open findings on AI asset types."))}
+ ,{id:"ai_platforms_tbl",t:"AI platforms",w:6,deps:["ai_platforms"],html:M=>M.ai&&M.ai.platforms&&table(M.ai.platforms.slice(0,10),[{h:"Platform",f:r=>`<b>${esc(r.name)}</b><div class="hint">${esc(r.type)} · ${esc(String(r.cloud).toUpperCase())} ${esc(r.region)}</div>`},{h:"Models",k:"models",n:1},{h:"Agents",k:"agents",n:1},{h:"Open misconfigs",f:r=>r.mis?pill("warn",fmt(r.mis)):"0"}])}
+ ,{id:"ai_tests_tbl",t:"Failing AI control tests",w:6,deps:["ct_tests_all"],html:M=>M.ai&&M.ai.tests&&(M.ai.tests.length?table(M.ai.tests.slice(0,10),[{h:"Control test",k:"name"},{h:"Risk factor",f:r=>r.risk?pill(/exposure|escalation|unprotected/i.test(r.risk)?"warn":"info",r.risk):"—"},{h:"Severity",f:r=>r.sev?pill(SEVC[r.sev]==="vlow"?"ok":SEVC[r.sev],SEVN[r.sev]):"—"},{h:"Findings",k:"n",n:1}]):empty("No failing control tests on AI assets."))}
+ ,{id:"iam_roles",t:"Roles with access to sensitive data",w:6,deps:["iam_roles_sensitive"],html:M=>M.iam&&table(M.iam,[{h:"Role",f:r=>`<span class="mono">${esc(r.role)}</span>`},{h:"Provider",k:"provider"},{h:"Users",k:"users",n:1},{h:"Sensitive data elements",k:"sde",n:1}])+`<div class="hint">Broad roles that reach many sensitive data elements are prime candidates for least-privilege review.</div>`}
+
+ // ---- graph widgets: files, structured data, M365, sharing, processes
+ ,{id:"g_files_total",t:"Files discovered",w:3,deps:["g_files_total"],kpi:M=>M.g&&M.g.g_files_total!=null&&{v:M.g.g_files_total,sub:M.g.g_files_volume!=null?bytes(M.g.g_files_volume)+" scanned":"",s:"info"}}
+ ,{id:"g_files_sensitive",t:"Files containing sensitive data",w:3,deps:["g_files_sensitive","g_files_total"],kpi:M=>M.g&&M.g.g_files_sensitive!=null&&{v:M.g.g_files_sensitive,sub:M.g.g_files_total?`${(100*M.g.g_files_sensitive/M.g.g_files_total).toFixed(1)}% of discovered files`:"",s:M.g.g_files_sensitive?"warn":"ok"}}
+ ,{id:"g_struct",t:"Sensitive data in databases",w:3,deps:["g_databases","g_tables_sensitive","g_columns_sensitive"],kpi:M=>M.g&&M.g.g_tables_sensitive!=null&&{v:M.g.g_tables_sensitive,u:"tables",sub:`${fmt(M.g.g_columns_sensitive)} sensitive columns · ${fmt(M.g.g_databases)} databases connected`,s:"warn"}}
+ ,{id:"g_label_cov",t:"Files with a classification label",w:3,deps:["g_files_labelled","g_files_total","g_files_sensitive"],kpi:M=>M.g&&M.g.g_files_labelled!=null&&{v:M.g.g_files_labelled,sub:M.g.g_files_sensitive?`${(100*M.g.g_files_labelled/M.g.g_files_sensitive).toFixed(1)}% of sensitive files · ${fmt(Math.max(0,M.g.g_files_sensitive-M.g.g_files_labelled))} still unlabelled`:"",s:M.g.g_files_sensitive&&M.g.g_files_labelled/M.g.g_files_sensitive<.5?"crit":"warn"}}
+ ,{id:"g_struct_tbl",t:"Structured data systems with open findings",w:6,deps:["g_struct_ds_findings"],html:M=>M.g&&M.g.structDs&&hbars(M.g.structDs,{label:"label",value:"n",color:()=>"warn"})}
+ ,{id:"g_public_links",t:"Files with public sharing links",w:3,deps:["g_files_public_links"],kpi:M=>M.g&&M.g.g_files_public_links!=null&&{v:M.g.g_files_public_links,sub:"anyone with the link can open them, no sign-in",s:M.g.g_files_public_links?"crit":"ok"}}
+ ,{id:"g_org_links",t:"Files with organisation-wide links",w:3,deps:["g_files_org_links"],kpi:M=>M.g&&M.g.g_files_org_links!=null&&{v:M.g.g_files_org_links,sub:"open to every employee in the tenant",s:M.g.g_files_org_links?"warn":"ok"}}
+ ,{id:"g_sites_ext",t:"Sites that allow external sharing",w:3,deps:["g_sites_external"],kpi:M=>M.g&&M.g.g_sites_external!=null&&{v:M.g.g_sites_external,sub:"SharePoint sites open to guests or external users",s:M.g.g_sites_external?"warn":"ok"}}
+ ,{id:"g_sites_all",t:"Sites accessible by all users",w:3,deps:["g_sites_all_users"],kpi:M=>M.g&&M.g.g_sites_all_users!=null&&{v:M.g.g_sites_all_users,sub:"granted to All Company or Everyone except external users",s:M.g.g_sites_all_users?"warn":"ok"}}
+ ,{id:"g_ext_sens",t:"Toxic: externally shareable sites with sensitive data",w:3,deps:["g_ext_sites_sensitive"],kpi:M=>M.g&&M.g.g_ext_sites_sensitive!=null&&{v:M.g.g_ext_sites_sensitive,sub:"sensitive data + external or guest sharing on the same site",s:M.g.g_ext_sites_sensitive?"crit":"ok"}}
+ ,{id:"g_m365_find",t:"Microsoft 365 data systems with open findings",w:3,deps:["g_m365_findings"],kpi:M=>M.g&&M.g.g_m365_findings!=null&&{v:M.g.g_m365_findings,sub:"SharePoint and OneDrive tenants with open posture findings",s:M.g.g_m365_findings?"warn":"ok"}}
+ ,{id:"g_ext_sites_tbl",t:"Externally shareable SharePoint sites with sensitive data",w:12,deps:["g_ext_sites_sensitive_list"],html:M=>M.g&&M.g.extSites&&table(M.g.extSites,[{h:"Site",f:r=>r.url?`<a href="${esc(r.url)}" target="_blank" rel="noopener">${esc(r.site||r.url)}</a>`:esc(r.site)},{h:"Sharing",f:r=>pill(/Guest/.test(r.sharing)?"crit":"warn",String(r.sharing).replace(/([a-z])([A-Z])/g,"$1 $2"))},{h:"Owner",f:r=>esc(r.owner)},{h:"Sensitive data elements",f:r=>esc(r.elements.slice(0,5).join(", "))+(r.elements.length>5?` +${r.elements.length-5}`:"")}])+`<div class="hint">Each row is a toxic combination: the site stores sensitive data and can be shared outside the organisation.</div>`}
+ ,{id:"g_sens_all_tbl",t:"Sensitive files accessible by all users",w:6,deps:["g_sens_files_all_users"],html:M=>M.g&&M.g.sensAll&&(M.g.sensAll.rows.length?`<div class="hint">${fmt(M.g.sensAll.total)} files in SharePoint and OneDrive shared with All Company</div>`+table(M.g.sensAll.rows,Object.keys(M.g.sensAll.rows[0]).filter(k=>typeof M.g.sensAll.rows[0][k]!=="object"&&!/^(id|key|tenantId|orgUnit)$/.test(k)).slice(0,4).map(k=>({h:k.replace(/([a-z])([A-Z])/g,"$1 $2"),f:r=>esc(String(r[k]??"—")).slice(0,70)}))):empty("No sensitive files are shared with All Company."))}
+ ,{id:"g_sites_ext_tbl",t:"Sites that allow external sharing",w:6,deps:["g_sites_external_list"],html:M=>M.g&&M.g.sitesExt&&table(M.g.sitesExt,[{h:"Site",f:r=>r.url?`<a href="${esc(r.url)}" target="_blank" rel="noopener">${esc(r.site||r.url)}</a>`:esc(r.site)},{h:"Sharing",f:r=>pill(/Guest/.test(r.sharing)?"crit":"warn",String(r.sharing).replace(/([a-z])([A-Z])/g,"$1 $2"))},{h:"Owner",f:r=>esc(r.owner)}])}
+ ,{id:"g_m365_tbl",t:"Microsoft 365 risk findings by data system",w:6,deps:["g_m365_findings_assets"],html:M=>M.g&&M.g.m365Assets&&table(M.g.m365Assets,[{h:"Data system",f:r=>`<span class="mono">${esc(r.name)}</span><div class="hint">${esc(r.type)}</div>`},{h:"Files",k:"docs",n:1},{h:"Open findings",k:"n",n:1},{h:"Very High / High",f:r=>r.vh?pill("crit",fmt(r.vh)):"0"}])}
+ ,{id:"g_proc_n",t:"Processing activities recorded",w:3,deps:["g_processes"],kpi:M=>M.g&&M.g.processes&&{v:M.g.processes.length,sub:`${fmt(M.g.procAuto)} involve automated decision-making`,s:"info"}}
+ ,{id:"g_tr_n",t:"Data transfers recorded",w:3,deps:["g_proc_transfers"],kpi:M=>M.g&&M.g.transfers&&{v:M.g.transfers.length,sub:`${fmt(M.g.trAbroad)} go to destinations outside India`,s:M.g.trAbroad?"warn":"ok"}}
+ ,{id:"g_proc_bu",t:"Processing activities by business unit",w:6,deps:["g_proc_by_bu"],html:M=>M.g&&M.g.procByBU&&hbars(M.g.procByBU.slice(0,10),{label:"label",value:"n"})}
+ ,{id:"g_tr_bu",t:"Data transfers by business unit",w:6,deps:["g_transfers_by_bu"],html:M=>M.g&&M.g.trByBU&&hbars(M.g.trByBU.slice(0,10),{label:"label",value:"n",color:()=>"purple"})}
+ ,{id:"g_tr_tbl",t:"Processes with data transfers",w:12,deps:["g_proc_transfers"],html:M=>M.g&&M.g.transfers&&table(M.g.transfers.slice(0,15),[{h:"Process",f:r=>`<b>${esc(r.process)}</b><div class="hint">${esc(r.bu)}</div>`},{h:"Purpose",f:r=>esc(String(r.purpose).slice(0,60))},{h:"Recipient",k:"recipient"},{h:"From",k:"from"},{h:"To",f:r=>r.to&&!/india|^in$|mumbai|delhi|bengal|hyderabad|chennai|pune/i.test(r.to)?pill("warn",r.to):esc(r.to||"—")},{h:"Method",k:"method"}])+`<div class="hint">Amber destinations are outside India. Transfers are allowed unless the Government restricts the country (Article 16); sector rules may still require local storage.</div>`}
+ ,{id:"g_proc_find",t:"Processes whose source systems have open security findings",w:6,deps:["g_proc_findings"],html:M=>M.g&&M.g.procFind&&(M.g.procFind.length?hbars(M.g.procFind,{label:"label",value:"n",color:()=>"crit"})+`<div class="hint">Medium to Very High open posture findings on data systems that feed each process's data transfers.</div>`:empty("No processes draw from data systems with open Medium-or-higher findings."))}
+];
+
+/* ================= Demo data (fictional) ================= */
+function demo(){
+  const now=Date.now(),day=864e5,rnd=(i,m)=>((i*9301+49297)%233280)/233280*m;
+  const tags=["access","access","access","erasure","rectify","grievance","nomination"];
+  const tickets=Array.from({length:148},(_,i)=>{const c=now-rnd(i,120)*day;const pub=i%3===0?c+rnd(i+7,30)*day:0;return{id:i+1,status:pub?4:1,type_tags:tags[i%7],created_at:Math.round(c),deadline:Math.round((c+30*day)/1000),published_at:pub?Math.round(Math.min(pub,now)):0}});
+  const attrs=[["GOVT_ID_IND_AADHAAR_CARD_NUMBER","Government Identifiers",214],["GOVT_ID_IND_PAN_NUMBER","Government Identifiers",188],["FINANCIAL_IN_VPA","Financial",96],["FINANCIAL_BANK_ACCOUNT","Financial",141],["CONTACT_PHONE","Contact Info",402],["CONTACT_EMAIL","Contact Info",377],["DEMOGRAPHIC_DOB","Physical Attributes",120],["MEDICAL_BLOOD_GROUP","Medical",31],["NAME_FIRST","Name",520]];
+  const stores=[["1","kyc-docs-prod","s3"],["2","loan-core","oracle"],["3","analytics-lake","snowflake_cloud"],["4","support-desk","salesforce"],["5","hr-share","sharepoint_online_onprem"],["10","finance-onedrive","onedrive_onprem"],["13","exec-mailboxes","microsoft_outlook_onprem"]];
+  return{
+   dsr_tickets:{data:tickets},dsr_form_counts:{data:{forms_cnt:12,forms_published_cnt:9}},
+   consent_by_activity:{data:[{consented_item_activity:"GRANTED",n:912040},{consented_item_activity:"DECLINED",n:41022},{consented_item_activity:"WITHDRAWN",n:64012},{consented_item_activity:"PENDING",n:40210}]},
+   consent_by_purpose_activity:{data:[["KYC & account opening",312040,0,0,0],["Marketing via SMS",121030,18420,22011,4000],["Cross-sell with insurer",40210,9120,9022,30100],["Product analytics",221040,6310,11021,0],["Guardian consent for minors",5470,120,58,610]].flatMap(([p,g,d,w,pe])=>[{processing_purpose:p,consented_item_activity:"GRANTED",n:g},{processing_purpose:p,consented_item_activity:"DECLINED",n:d},{processing_purpose:p,consented_item_activity:"WITHDRAWN",n:w},{processing_purpose:p,consented_item_activity:"PENDING",n:pe}])},
+   consent_by_country:{data:[{consent_geo_location_country:"IN",n:1004120},{consent_geo_location_country:"AE",n:30210},{consent_geo_location_country:"SG",n:12040},{consent_geo_location_country:"GB",n:10924}]},
+   consent_purposes:{data:[{category_name:"Marketing"},{category_name:"Marketing"},{category_name:"Core service"},{category_name:"Analytics"},{category_name:"Children"}]},
+   pd_attributes:{data:attrs.map(a=>({system_name:a[0],category_name:a[1],name:a[0]}))},
+   classif_by_attribute:{data:attrs.map(a=>({attribute_keyword:a[0],columns:a[2]}))},
+   classif_by_attribute_masking:{data:attrs.flatMap(a=>[{attribute_keyword:a[0],masking_policy_name_keyword:"mask_last4",columns:Math.round(a[2]*.35)},{attribute_keyword:a[0],masking_policy_name_keyword:"",columns:a[2]-Math.round(a[2]*.35)}])},
+   classif_by_attribute_datasource:{data:attrs.flatMap((a,i)=>stores.slice(0,2+i%3).map((s,j)=>({attribute_keyword:a[0],datasource_id:s[0],connector_type_id:s[2],columns:Math.round(a[2]/(2+i%3)),rows:Math.round(rnd(i*5+j,900000))})))},
+   datasources_list:{data:stores.map(s=>({id:s[0],name:s[1],connector_type_id:s[2],ds_connector_type:s[2]==="oracle"?"onprem":"cloud"})).concat(Array.from({length:40},(_,i)=>({id:String(10+i),name:"system-"+i,connector_type_id:["s3","sql_server","onedrive_onprem","postgresql"][i%4],ds_connector_type:i%3?"cloud":"onprem"})))},
+   datamap_assets:{data:Array.from({length:120},(_,i)=>({id:i,asset_exists:i%17!==0,elements_count:i%3?4:0}))},
+   risk_by_level:{data:[{level:"VERY HIGH",n:9},{level:"HIGH",n:23},{level:"MEDIUM",n:41},{level:"LOW",n:30}]},
+   risk_by_state:{data:[{state:"FLAGGED",n:71},{state:"REDUCED",n:24},{state:"RETAINED",n:8}]},
+   risk_by_overdue:{data:[{overdue:false,n:91},{overdue:true,n:12}]},
+   alerts_by_severity_status:{data:[{severity:4,status:"open",n:6},{severity:3,status:"open",n:17},{severity:3,status:"fixed",n:22},{severity:4,status:"suppressed",n:2}]},
+   alerts_by_regulation:{data:[{regulation:"India DPDPA",n:29},{regulation:"EU GDPR",n:18}]},
+   alerts_by_datasource:{data:[{datasource_id:"1",n:12},{datasource_id:"3",n:9},{datasource_id:"4",n:4}]},
+   breach_incidents:{data:[{id:1001,name:"Credential stuffing on mobile app",progress:2,created_at:now-51*36e5,deadline:now+21*36e5},{id:998,name:"Misdirected statement email",progress:1,created_at:now-9*day,deadline:0},{id:990,name:"Lost field-agent laptop",progress:3,created_at:now-30*day,deadline:0}]},
+   assessments:{data:Array.from({length:60},(_,i)=>({template_title:["DPIA: video KYC","Vendor review","PIA: credit model","DPDPA readiness"][i%4],template_type:["Privacy Impact Assessment","Vendor","Privacy Impact Assessment","Custom"][i%4],completion_date:i%3===0?1:0,progress_percent:i%2?40:0}))},
+   vendors:{data:Array.from({length:80},(_,i)=>({score:Math.round(rnd(i,100))}))},
+   compliance_frameworks:{data:[{name:"India DPDPA",controls:35,total_rules:93,status:true},{name:"ISO 27701",controls:100,total_rules:388,status:true}]},
+   privacy_notices:{data:[{state:"PUBLISHED",lang:"en,hi,ta,te,mr,bn,gu,kn,ml"},{state:"DRAFT",lang:"en"},{state:"PUBLISHED",lang:"en,or,pa"}]},
+   files_by_ds:{data:[{data_source_id:"5",files:812400,bytes:2.1e12},{data_source_id:"1",files:402100,bytes:8.4e11},{data_source_id:"10",files:220400,bytes:3.2e11},{data_source_id:"13",files:98200,bytes:1.1e11}]},
+   files_unique_by_ds:{data:[{data_source_id:"5",unique_files:601200},{data_source_id:"1",unique_files:350100},{data_source_id:"10",unique_files:190900},{data_source_id:"13",unique_files:91000}]},
+   files_sensitive_by_ds:{data:[{data_source_id:"5",files:120400},{data_source_id:"1",files:210300},{data_source_id:"10",files:30200},{data_source_id:"13",files:9100}]},
+   files_obsolete_by_ds:{data:[{data_source_id:"5",files:240100,bytes:6.2e11},{data_source_id:"1",files:30200,bytes:9e10},{data_source_id:"10",files:80400,bytes:1.4e11}]},
+   files_by_label:{data:[{classification_label_keyword:"Confidential",files:310200},{classification_label_keyword:"Internal",files:402100},{classification_label_keyword:"Restricted - Aadhaar",files:61200},{classification_label_keyword:"Public",files:40100}]},
+   files_by_format:{data:[{file_format:"pdf",files:520100,bytes:9e11},{file_format:"docx",files:310400,bytes:4e11},{file_format:"xlsx",files:210300,bytes:3e11},{file_format:"jpg",files:180200,bytes:5e11},{file_format:"tmp",files:42100,bytes:2e9},{file_format:"log",files:30100,bytes:9e9}]},
+   files_skip_reasons:{data:[{skip_reason:"Password protected",files:4120},{skip_reason:"File too large",files:1210},{skip_reason:"Unsupported format",files:890}]},
+   insights_policies:{data:[{name:"Duplicate files on SharePoint",category_name:"File ROT",is_active:true,last_eval_at:Date.now()-2*864e5},{name:"Files untouched for 3 years",category_name:"File ROT",is_active:true,last_eval_at:Date.now()-864e5},{name:"Aadhaar in shared folders",category_name:"File Insights",is_active:false,last_eval_at:0}]},
+   g_files_total:{data:{data:[{"__AGGR__.fileext-Total Count":{displayName:"Files"}},{"__AGGR__.fileext-Total Count":1533100}]}},
+   g_files_volume:{data:{data:[{"__AGGR__.propsum":{displayName:"Size"}},{"__AGGR__.propsum":3.4e12}]}},
+   g_files_sensitive:{data:{data:[{"__AGGR__.fileext-Total Count":{displayName:"Files"}},{"__AGGR__.fileext-Total Count":368200}]}},
+   g_files_labelled:{data:{data:[{"__AGGR__.fileext-Total Count":{displayName:"Files"}},{"__AGGR__.fileext-Total Count":151400}]}},
+   g_files_public_links:{data:{data:[{"x":{displayName:"Files"}},{"x":412}]}},
+   g_files_org_links:{data:{data:[{"x":{displayName:"Files"}},{"x":9120}]}},
+   g_databases:{data:{data:[{"x":{displayName:"DB"}},{"x":64}]}},
+   g_tables_sensitive:{data:{data:[{"x":{displayName:"Tables"}},{"x":1840}]}},
+   g_columns_sensitive:{data:{data:[{"x":{displayName:"Cols"}},{"x":12410}]}},
+   g_m365_findings:{data:{data:[{"x":{displayName:"Systems"}},{"x":3}]}},
+   g_ext_sites_sensitive:{data:{data:[{"x":{displayName:"Sites"}},{"x":11}]}},
+   g_sites_all_users:{data:{data:[{"x":{displayName:"Sites"}},{"x":27}]}},
+   g_sites_external:{data:{data:[{"x":{displayName:"Sites"}},{"x":38}]}},
+   g_struct_ds_findings:{data:{data:[{displayName:{displayName:"Name"}},{displayName:"loan-core (Oracle)","__AGGR__.finding-Count":41},{displayName:"analytics-lake (Snowflake)","__AGGR__.finding-Count":29},{displayName:"edu-loans (PostgreSQL)","__AGGR__.finding-Count":17}]}},
+   g_m365_findings_assets:{data:{graphLookup:{traversedPaths:[{pathElements:[{elementType:"NODE",elementLabel:"DATASYSTEM",properties:{displayName:"SharePoint · acme.sharepoint.com",graphAssetType:"sharepoint_online",discoveredDocCount:812400}},{elementType:"NODE",elementLabel:"POSTUREFINDINGEXT",properties:{severity:5}}]},{pathElements:[{elementType:"NODE",elementLabel:"DATASYSTEM",properties:{displayName:"SharePoint · acme.sharepoint.com",graphAssetType:"sharepoint_online",discoveredDocCount:812400}},{elementType:"NODE",elementLabel:"POSTUREFINDINGEXT",properties:{severity:3}}]},{pathElements:[{elementType:"NODE",elementLabel:"DATASYSTEM",properties:{displayName:"OneDrive · acme",graphAssetType:"onedrive",discoveredDocCount:220400}},{elementType:"NODE",elementLabel:"POSTUREFINDINGEXT",properties:{severity:4}}]}]}}},
+   g_ext_sites_sensitive_list:{data:{graphLookup:{traversedPaths:[{pathElements:[{elementLabel:"DATA_ELEMENT",properties:{displayName:"IN Aadhaar Card Number"}},{elementLabel:"DATASYSTEM",properties:{}},{elementLabel:"SITE",properties:{displayName:"KYC Operations",webURL:"https://acme.sharepoint.com/sites/kyc",sharingCapabilities:"ExternalUserAndGuestSharing",siteOwner:"ops-lead"}}]},{pathElements:[{elementLabel:"DATA_ELEMENT",properties:{displayName:"IN PAN"}},{elementLabel:"SITE",properties:{displayName:"KYC Operations",webURL:"https://acme.sharepoint.com/sites/kyc",sharingCapabilities:"ExternalUserAndGuestSharing",siteOwner:"ops-lead"}}]},{pathElements:[{elementLabel:"DATA_ELEMENT",properties:{displayName:"Bank account"}},{elementLabel:"SITE",properties:{displayName:"Vendor Payments",webURL:"https://acme.sharepoint.com/sites/vendorpay",sharingCapabilities:"ExternalUserSharingOnly",siteOwner:"finance"}}]}]}}},
+   g_sites_external_list:{data:{graphLookup:{traversedPaths:[{pathElements:[{elementLabel:"SITE",properties:{displayName:"KYC Operations",webURL:"https://acme.sharepoint.com/sites/kyc",sharingCapabilities:"ExternalUserAndGuestSharing",siteOwner:"ops-lead"}}]},{pathElements:[{elementLabel:"SITE",properties:{displayName:"Partner Portal",webURL:"https://acme.sharepoint.com/sites/partners",sharingCapabilities:"ExistingExternalUserSharingOnly",siteOwner:"alliances"}}]}]}}},
+   g_sens_files_all_users:{data:{count:216,data:[{displayName:"aadhaar_batch_0423.xlsx",resourcePath:"/sites/hr/Shared Documents/",owner:"hr-ops"},{displayName:"pan_list_q2.csv",resourcePath:"/sites/finance/Reports/",owner:"finance"}]}},
+   g_proc_by_bu:{data:{data:[{key:{displayName:"BU"}},{key:"Retail lending",value:14},{key:"Cards",value:9},{key:"HR",value:6}]}},
+   g_transfers_by_bu:{data:{data:[{key:{displayName:"BU"}},{key:"Retail lending",value:8},{key:"Cards",value:5},{key:"HR",value:2}]}},
+   g_processes:{data:{graphLookup:{traversedPaths:Array.from({length:29},(_,i)=>({pathElements:[{elementLabel:"PROCESS",properties:{displayName:"Process "+(i+1),automatedDecistionMaking:i%7===0}}]}))}}},
+   g_proc_transfers:{data:{graphLookup:{traversedPaths:[{pathElements:[{elementLabel:"DATA_TRANSFER",properties:{recipientOrganization:"Credit bureau",sourceLocation:"India",destinationLocation:"India",transferMethod:"API"}},{elementLabel:"PROCESS",properties:{displayName:"Loan underwriting",managingOrganization:"Retail lending",processingPurpose:"Credit assessment"}}]},{pathElements:[{elementLabel:"DATA_TRANSFER",properties:{recipientOrganization:"Card network",sourceLocation:"India",destinationLocation:"Singapore",transferMethod:"SFTP"}},{elementLabel:"PROCESS",properties:{displayName:"Card settlement",managingOrganization:"Cards",processingPurpose:"Payments"}}]},{pathElements:[{elementLabel:"DATA_TRANSFER",properties:{recipientOrganization:"Payroll vendor",sourceLocation:"India",destinationLocation:"United States",transferMethod:"SaaS"}},{elementLabel:"PROCESS",properties:{displayName:"Payroll",managingOrganization:"HR",processingPurpose:"Salary processing"}}]}]}}},
+   g_proc_findings:{data:{data:[{key:{displayName:"Process"}},{key:"Loan underwriting",value:12},{key:"Card settlement",value:7}]}},
+   ai_models_agents:{data:{data:[{assetType:{displayName:"Asset type"}},{assetType:"aws_bedrock_foundation_model",cloud:"AWS","__AGGR__.modelCount":9,"__AGGR__.aiagents":6,"__AGGR__.datasystems":4,"__AGGR__.fileCount":182400,"__AGGR__.sdeCount":41,"__AGGR__.misconfigs":12},{assetType:"aws_sagemaker_model",cloud:"AWS","__AGGR__.modelCount":5,"__AGGR__.aiagents":0,"__AGGR__.datasystems":2,"__AGGR__.fileCount":61200,"__AGGR__.sdeCount":18,"__AGGR__.misconfigs":0},{assetType:"gcp_vertex_ai_model",cloud:"GCP","__AGGR__.modelCount":3,"__AGGR__.aiagents":2,"__AGGR__.datasystems":1,"__AGGR__.fileCount":9100,"__AGGR__.sdeCount":0,"__AGGR__.misconfigs":4}]}},
+   ai_platforms:{data:{data:[{displayName:{displayName:"Name"}},{displayName:"Bedrock · ap-south-1",assetType:"aws_bedrock",cloud:"AWS",region:"ap-south-1","__AGGR__.aiagent":6,"__AGGR__.aimodel":9,"__AGGR__.misconfigs":12},{displayName:"SageMaker · ap-south-1",assetType:"aws_sagemaker",cloud:"AWS",region:"ap-south-1","__AGGR__.aiagent":0,"__AGGR__.aimodel":5,"__AGGR__.misconfigs":3},{displayName:"Vertex AI · asia-south1",assetType:"gcp_vertex_ai",cloud:"GCP",region:"asia-south1","__AGGR__.aiagent":2,"__AGGR__.aimodel":3,"__AGGR__.misconfigs":4}]}},
+   ai_count_models:{data:{data:[{"__AGGR__.count":{displayName:"Total"}},{"__AGGR__.count":17}]}},
+   ai_count_agents:{data:{data:[{"__AGGR__.count":{displayName:"Total"}},{"__AGGR__.count":8}]}},
+   ai_count_kb:{data:{data:[{"__AGGR__.count":{displayName:"Total"}},{"__AGGR__.count":5}]}},
+   ai_agents_vhh:{data:{data:[{"__AGGR__.count":{displayName:"Total"}},{"__AGGR__.count":4}]}},
+   ai_agents_kb:{data:{data:[{"__AGGR__.count":{displayName:"Total"}},{"__AGGR__.count":6}]}},
+   ai_agent_findings_by_category:{data:{data:[{key:{displayName:"Rule category"}},{ruleCategory:"Encrypt Data at Rest",count:13},{ruleCategory:"Privileged Access",count:7},{ruleCategory:"Logging and Monitoring",count:4}]}},
+   sp_open_by_asset_type_sev:{data:[{asset_type:"aws_bedrock_agent",severity:5,findings:6},{asset_type:"aws_bedrock_agent",severity:4,findings:9},{asset_type:"aws_bedrock_knowledge_base",severity:4,findings:5},{asset_type:"aws_sagemaker_notebook",severity:3,findings:11},{asset_type:"bucket",severity:4,findings:2400}]},
+   ct_tests_all:{data:{graphLookup:{traversedPaths:[{aggregateCount:6,pathElements:[{properties:{displayName:"Ensure Bedrock models are not connected to a publicly accessible S3 bucket holding financial data",riskFactor:"External Exposure",severity:"5",cloud:"AWS"}}]},{aggregateCount:9,pathElements:[{properties:{displayName:"Ensure Bedrock agent sessions are encrypted with customer-managed keys",riskFactor:"Unprotected Data",severity:"4",cloud:"AWS"}}]},{aggregateCount:4,pathElements:[{properties:{displayName:"Ensure Bedrock agents do not use an IAM role with administrator permissions",riskFactor:"Privilege Escalation",severity:"5",cloud:"AWS"}}]},{aggregateCount:3,pathElements:[{properties:{displayName:"Ensure model invocation logging is enabled for Bedrock",riskFactor:"Insecure AI Model",severity:"3",cloud:"AWS"}}]}]}}},
+   iam_roles_sensitive:{data:{data:[{displayName:{displayName:"Role"}},{displayName:"DataLakeAdmin",providerType:"aws","__AGGR__.userCount":14,"__AGGR__.pdCount":18210},{displayName:"BedrockAgentRole",providerType:"aws","__AGGR__.userCount":0,"__AGGR__.pdCount":9120},{displayName:"Storage Blob Data Reader",providerType:"azure","__AGGR__.userCount":41,"__AGGR__.pdCount":4210}]}},
+   sp_by_severity_status:{data:[{severity:5,status:"open",findings:412},{severity:4,status:"open",findings:2610},{severity:3,status:"open",findings:5120},{severity:2,status:"open",findings:2380},{severity:1,status:"open",findings:310},{severity:4,status:"fixed",findings:1840},{severity:3,status:"suppressed",findings:420},{severity:2,status:"passed",findings:2210}]},
+   sp_open_by_cloud_account:{data:[{cloud_provider_type:"aws",cloud_provider_account_id:"prod-payments",findings:5210},{cloud_provider_type:"aws",cloud_provider_account_id:"data-lake",findings:2140},{cloud_provider_type:"azure",cloud_provider_account_id:"corp-it",findings:1820},{cloud_provider_type:"gcp",cloud_provider_account_id:"analytics-proj",findings:1662}]},
+   sp_open_by_region:{data:[{cloud_provider_type:"aws",cloud_provider_region:"ap-south-1",findings:5410},{cloud_provider_type:"aws",cloud_provider_region:"us-east-1",findings:1940},{cloud_provider_type:"azure",cloud_provider_region:"centralindia",findings:1820},{cloud_provider_type:"gcp",cloud_provider_region:"asia-southeast1",findings:1662}]},
+   sp_open_by_service:{data:[{cloud_provider_type:"aws",service_type:"s3",findings:4120},{cloud_provider_type:"aws",service_type:"rds",findings:2210},{cloud_provider_type:"azure",service_type:"storage",findings:1410},{cloud_provider_type:"gcp",service_type:"bigquery",findings:980},{cloud_provider_type:"aws",service_type:"bedrock",findings:310}]},
+   sp_open_by_category:{data:[{rule_category:"Privileged Access",findings:3120},{rule_category:"Encrypt Data at Rest",findings:2740},{rule_category:"Key Management",findings:1980},{rule_category:"Public Exposure",findings:910},{rule_category:"Logging and Monitoring",findings:880}]},
+   sp_open_by_rule:{data:[{rule_name_keyword:"Ensure S3 buckets holding personal data block public access",severity:5,findings:212},{rule_name_keyword:"Ensure RDS snapshots are not publicly accessible",severity:5,findings:140},{rule_name_keyword:"Ensure RDS storage is encrypted with customer-managed keys",severity:4,findings:1310},{rule_name_keyword:"Ensure Azure storage requires secure transfer",severity:4,findings:640},{rule_name_keyword:"Ensure CloudTrail logs are retained for 1 year",severity:3,findings:410}]},
+   sp_open_by_policy:{data:[{policy_name_keyword:"Security posture policy for all Amazon services",findings:7350},{policy_name_keyword:"Security posture policy for all Azure services",findings:1820},{policy_name_keyword:"Security posture policy for all Google services",findings:1662}]},
+   sp_open_by_asset:{data:[{asset_name_keyword:"kyc-docs-prod",asset_type:"bucket",cloud_provider_type:"aws",findings:41},{asset_name_keyword:"loan-core-db",asset_type:"db_instance",cloud_provider_type:"aws",findings:29},{asset_name_keyword:"analytics-lake",asset_type:"dataset",cloud_provider_type:"gcp",findings:22}]},
+   sp_open_by_assignee:{data:[{assignee_id:0,findings:7420},{assignee_id:12,findings:2210},{assignee_id:19,findings:1202}]},
+   sp_opened_30d:{data:Array.from({length:30},(_,i)=>({created_at:Date.now()-(29-i)*864e5,findings:Math.round(120+60*Math.sin(i/3)+i*2)}))},
+   sp_resolved_30d:{data:Array.from({length:30},(_,i)=>({modified_at:Date.now()-(29-i)*864e5,findings:Math.round(90+50*Math.cos(i/4)+i*3)}))},
+   ct_risk_score:{data:{risk_score:68,previous_risk_score:64}},
+   ct_trend_risk:{data:Array.from({length:30},(_,i)=>({collected_at:Date.now()-(29-i)*864e5,count:56+Math.round(i/2.5)}))},
+   ct_trend_open:{data:Array.from({length:30},(_,i)=>({collected_at:Date.now()-(29-i)*864e5,count:6200-i*40}))},
+   ct_trend_data:{data:Array.from({length:30},(_,i)=>({collected_at:Date.now()-(29-i)*864e5,count:2100-i*15}))},
+   ct_findings_total:{data:{data:[{"__AGGR__.count":{displayName:"findings"}},{"__AGGR__.count":5040}]}},
+   ct_tests_failing:{data:{data:[{"__AGGR__.count":{displayName:"Tests"}},{"__AGGR__.count":142}]}},
+   ct_frameworks_failing:{data:{data:[{"__AGGR__.count":{displayName:"Frameworks"}},{"__AGGR__.count":9}]}},
+   ct_by_severity:{data:{data:[{key:{displayName:"Severity"},value:{displayName:"Findings"}},{key:5,value:120},{key:4,value:3410},{key:3,value:980},{key:2,value:410},{key:1,value:120}]}},
+   ct_top_tests:{data:{graphLookup:{traversedPaths:[{aggregateCount:410,pathElements:[{properties:{displayName:"Ensure S3 buckets with personal data are encrypted with customer-managed keys",cloud:"AWS",riskFactor:"Unprotected Data",severity:"5",numberOfFrameworks:6}}]},{aggregateCount:288,pathElements:[{properties:{displayName:"Ensure Bedrock models are not connected to public S3 buckets",cloud:"AWS",riskFactor:"External Exposure",severity:"5",numberOfFrameworks:4}}]},{aggregateCount:190,pathElements:[{properties:{displayName:"Ensure Azure storage requires secure transfer",cloud:"Azure",riskFactor:"Insecure Application",severity:"4",numberOfFrameworks:5}}]}]}}},
+   alerts_by_policy:{data:[{policy_name:"Sensitive files shared publicly (anyone link)",status:"open",n:14},{policy_name:"Aadhaar shared with external guests",status:"open",n:6},{policy_name:"Aadhaar shared with external guests",status:"fixed",n:9},{policy_name:"Cross-border transfer to US",status:"open",n:3}]}
+  };
+}
+
+
+/* ================= Dashboard layout: primary sections > subsections > widgets, each mapped to the DPDP Act ================= */
+const ART={
+ dprm:{t:"Data Principal Rights Management (DPRM)",act:"Article 11 · Article 12 · Article 13 · Article 14",info:"<b>What the Act requires.</b> A data principal can ask for a summary of their personal data and who it was shared with (Article 11), have it corrected, completed, updated or erased (Article 12), and nominate someone to act for them (Article 14). Every fiduciary needs a grievance channel (Article 13); the DPDP Rules set a response window of up to 90 days. Track each DSR against its deadline from today."},
+ visibility:{t:"Data visibility",act:"Article 8(4) · Article 8(5) · Article 8(7)",info:"<b>What the Act requires.</b> A data fiduciary must put appropriate technical and organisational measures in place (Article 8(4)) and take reasonable security safeguards to prevent a personal data breach (Article 8(5)). Data must be erased once its purpose is served (Article 8(7)). Knowing where Aadhaar, PAN and other India-specific identifiers sit, and whether they are masked, is the starting point."},
+ consent:{t:"User consents overview",act:"Article 4 · Article 6 · Article 7 · Article 9",info:"<b>What the Act requires.</b> Personal data may be processed only for a lawful purpose, either with the data principal’s consent or for a legitimate use (Article 4); legitimate uses include data the person provided voluntarily for a specified purpose without objecting, and State benefits or services (Article 7). Consent must be free, specific, informed, unconditional and unambiguous, given by a clear affirmative action, and limited to the stated purpose (Article 6(1)). Withdrawing must be as easy as giving it (Article 6(4)). Consent can be managed through a Consent Manager registered with the Board (Article 6(7)–(9)). For children, verifiable parental consent is required and tracking or targeted advertising is not allowed (Article 9)."},
+ notice:{t:"Notice and transparency",act:"Article 5 · Article 8(9)",info:"<b>What the Act requires.</b> Every consent request comes with a notice describing the personal data, the purpose, how to exercise rights and how to complain to the Board (Article 5). The notice must be available in English or any language in the Eighth Schedule (Article 5(3)). Contact details of the DPO or responsible person must be published (Article 8(9))."},
+ assess:{t:"Assessments and accountability",act:"Article 8(1) · Article 8(2) · Article 10",info:"<b>What the Act requires.</b> The fiduciary stays responsible for processing done by its processors, who may act only under a valid contract (Article 8(1)–(2)). A Significant Data Fiduciary must appoint a DPO based in India, an independent data auditor, and carry out periodic Data Protection Impact Assessments and audits (Article 10(2))."},
+ sensitive:{t:"Sensitive data",act:"Article 8(4) · Article 8(5)",info:"<b>What the Act requires.</b> Reasonable security safeguards to prevent a breach (Article 8(5)), backed by technical and organisational measures (Article 8(4)). The DPDP Rules list encryption, masking, obfuscation or tokenisation, and access control as expected safeguards."},
+ rot:{t:"ROT data",act:"Article 8(7) · Article 8(8)",info:"<b>What the Act requires.</b> Personal data must be erased once the data principal withdraws consent or the purpose is no longer served, unless another law requires it to be kept (Article 8(7)); processors must erase it too. Redundant, obsolete and trivial copies widen the breach surface and make erasure requests harder to fulfil."},
+ labelling:{t:"Labelling",act:"Article 8(4) · Article 8(5)",info:"<b>Why it matters.</b> Sensitivity labels drive downstream controls such as DLP, encryption and sharing restrictions. They are a practical way to show the organisational measures Article 8(4) expects and the safeguards Article 8(5) requires."},
+ misconfig:{t:"Misconfigurations",act:"Article 8(5)",info:"<b>Why it matters.</b> Policy alerts flag data systems whose settings break your data security policies, such as open storage, missing encryption or weak access settings. Each open alert is a gap in the reasonable security safeguards Article 8(5) requires."},
+ posture:{t:"Security posture",act:"Article 8(5) · Schedule",info:"<b>Why it matters.</b> The risk register tracks risks raised in assessments and their treatment. Failure to take reasonable security safeguards carries the largest penalty in the Act’s Schedule, up to ₹250 crore per instance."},
+ access:{t:"Access governance",act:"Article 8(5) · Article 16",info:"<b>Why it matters.</b> Public links, anyone-links and guest access expose personal data beyond its purpose. Cross-border alerts show data moving out of India; transfers are allowed except to countries the Government restricts (Article 16), and sector rules such as RBI data localisation still apply."},
+ exposure:{t:"Unstructured data exposure",act:"Article 8(5) · Article 8(4)",info:"<b>Why it matters.</b> Public links let anyone open a file without signing in; organisation-wide links and All Company groups expose it to every employee; external sharing opens whole sites to guests. Where those overlap with sensitive data, a single forwarded link is a personal data breach. Reasonable safeguards under Article 8(5) include restricting access to those with a need to know."},
+ ropa:{t:"Processing activities and data transfers",act:"Article 4 · Article 5 · Article 8(1) · Article 16",info:"<b>What the Act requires.</b> Every processing activity needs a lawful purpose (Article 4) that is described in the notice (Article 5), and the fiduciary stays responsible for processing done by others on its behalf (Article 8(1)). Personal data may be transferred outside India except to countries the Government restricts (Article 16). A current record of processes and transfers is how you prove all three."},
+ ai_inventory:{t:"AI inventory",act:"Article 4 · Article 8(1) · Article 8(4)",info:"<b>Why it matters.</b> Models, agents and knowledge bases are new processors of personal data. The fiduciary stays responsible for all processing done on its behalf (Article 8(1)) and needs a lawful ground for it (Article 4). An inventory is the first organisational measure under Article 8(4)."},
+ ai_data:{t:"Sensitive data accessible to AI",act:"Article 4 · Article 6(1) · Article 8(5) · Article 8(7)",info:"<b>Why it matters.</b> Personal data collected for one purpose cannot quietly become training or retrieval data for another (Article 4, Article 6(1)). Models with access to Aadhaar, PAN or health data need the same safeguards as the source systems (Article 8(5)), and that data must be erased from them when the purpose ends (Article 8(7))."},
+ ai_toxic:{t:"Toxic combinations on AI",act:"Article 8(5) · Article 8(6)",info:"<b>Why it matters.</b> A toxic combination is two or more weaknesses that are tolerable alone but dangerous together, for example an AI model that reads sensitive data from a bucket that is also public. Each one is a likely breach path that would trigger notice to the Board and affected people (Article 8(6))."},
+ ai_posture:{t:"AI security posture",act:"Article 8(5)",info:"<b>Why it matters.</b> Misconfigurations on AI assets map to OWASP LLM risks such as supply chain (LLM03) and excessive agency (LLM06). Closing them is part of the reasonable security safeguards Article 8(5) requires."},
+ sf_overview:{t:"Findings overview",act:"Article 8(5) · Schedule",info:"<b>Why it matters.</b> Security posture findings are cloud misconfigurations Securiti detects on assets such as storage buckets, databases and AI services: missing encryption, public access, weak keys. Each open Very High or High finding is a gap in the reasonable security safeguards Article 8(5) requires, the duty with the largest penalty in the Schedule."},
+ sf_where:{t:"Where findings are",act:"Article 8(5) · Article 16",info:"<b>Why it matters.</b> Grouping findings by cloud, account, region and asset tells owners where to act first. Findings outside Indian regions also show where personal data may sit abroad, which transfer rules under Article 16 and sector rules such as RBI localisation govern."},
+ sf_what:{t:"What is failing",act:"Article 8(4) · Article 8(5)",info:"<b>Why it matters.</b> Rule categories and rules show which controls are missing across the estate. Fixing the top rules closes many findings at once and is the fastest way to show the technical and organisational measures Article 8(4) expects."},
+ sf_tests:{t:"Compliance control tests",act:"Article 8(5) · Article 10(2)",info:"<b>Why it matters.</b> Control tests check assets against framework controls, including India DPDPA. The posture score, failing tests and affected frameworks give the independent data auditor and periodic audits required of a Significant Data Fiduciary (Article 10(2)) a ready evidence trail."},
+ breach:{t:"Breach response",act:"Article 8(6) · DPDP Rules",info:"<b>What the Act requires.</b> On a personal data breach, the fiduciary must inform the Data Protection Board and each affected data principal (Article 8(6)). Under the DPDP Rules, a detailed report goes to the Board within 72 hours of becoming aware of the breach. Failing to notify carries a penalty of up to ₹200 crore."}
+};
+const KPI_W=3;
+const LAYOUT={
+ DPO:[{title:"Privacy",sections:[
+   {k:"visibility",w:["aadhaar","pan","g_files_sensitive","g_struct","india_ids","india_heat"]},
+   {k:"dprm",w:["dsr_open","dsr_closed","dsr_due7","dsr_overdue","dsr_deadline","dsr_queue","dsr_type","dsr_trend","dsr_aging","dsr_avg"]},
+   {k:"consent",w:["consent_withdrawn","minor_consent","consent_status","consent_purpose","consent_country","purposes"]},
+   {k:"notice",w:["notice_langs","notice_state"]},
+   {k:"assess",w:["dpia_open","dpdpa_fw","vendors_low","assess_status","assess_type","vendor_scores","risk_level"]},
+   {k:"ropa",w:["g_proc_n","g_tr_n","g_proc_bu","g_tr_bu","g_tr_tbl"]}]}],
+ CISO:[{title:"DSPM",sections:[
+   {k:"sensitive",label:"Sensitive data and misconfigurations",act:"Article 8(4) · Article 8(5)",w:["g_files_total","g_files_sensitive","g_struct","aadhaar","pan","masking","alerts_open","g_m365_find","india_ids","india_heat","pd_cat","g_struct_tbl","g_m365_tbl","m365_table","alerts_sev","alerts_top","skips"]},
+   {k:"exposure",w:["g_public_links","g_org_links","g_sites_ext","g_sites_all","g_ext_sens","g_ext_sites_tbl","g_sens_all_tbl","g_sites_ext_tbl"]},
+   {k:"rot",w:["rot_est","dup_files","obs_files","storage","rot_tbl","rot_mix"]},
+   {k:"labelling",w:["g_label_cov","label_cov","labels"]},
+   {k:"access",w:["sharing_alerts","sharing_tbl","alerts_reg","iam_roles","g_proc_find"]}]},
+  {title:"AI security",sections:[
+   {k:"ai_inventory",w:["ai_models","ai_agents","ai_kb","ai_platforms_n","ai_platforms_tbl","ai_by_type"]},
+   {k:"ai_data",w:["ai_models_sens","ai_toxic_kpi","ai_agents_vhh","ai_sp_findings","ai_sensitive_tbl"]},
+   {k:"ai_toxic",w:["ai_toxic_tbl"]},
+   {k:"ai_posture",w:["ai_cats","ai_tests_tbl"]}]},
+  {title:"Security posture",sections:[
+   {k:"posture",label:"Risk register and posture score",w:["risk_overdue","ct_score","risk_level","risk_state"]},
+   {k:"sf_overview",w:["sp_open","sp_vhh","sp_unassigned","sp_flow30","sp_sev","sp_flow"]}]},
+  {title:"Security findings",sections:[
+   {k:"sf_where",w:["sp_india","sp_cloud","sp_region","sp_account","sp_service","sp_assets"]},
+   {k:"sf_what",w:["sp_category","sp_policy","sp_rules"]},
+   {k:"sf_tests",w:["ct_findings","ct_tests","ct_frameworks","ct_sev","ct_trend","ct_top","ct_open_trend"]}]},
+  {title:"Breach response",sections:[{k:"breach",w:["breach_open","breach_tbl"]}]}],
+ CIO:[{title:"DSPM",sections:[
+   {k:"sensitive",label:"Sensitive data and ROT",act:"Article 8(4) · Article 8(5) · Article 8(7)",w:["g_files_sensitive","g_public_links","g_ext_sens","rot_est","masking","storage","rot_mix","risk_level"]},
+   {k:"sf_overview",label:"Security findings",act:"Article 8(5)",w:["sp_open","sp_vhh","ct_score","sp_flow30","sp_sev","sp_category"]},
+   {k:"ai_data",label:"AI security",act:"Article 4 · Article 8(5)",w:["ai_models","ai_models_sens","ai_toxic_kpi","ai_agents_vhh"]},
+   {k:"breach",w:["breach_open","risk_overdue","breach_tbl"]}]},
+  {title:"Privacy",sections:[
+   {k:"dprm",w:["dsr_open","dsr_overdue","dsr_deadline","dsr_trend"]},
+   {k:"consent",label:"Consent and accountability",act:"Article 6 · Article 9 · Article 10",w:["consent_withdrawn","dpia_open","dpdpa_fw","vendors_low","consent_status","assess_status"]}]}]
+};
+// CIO keeps a short version of each article
+const SHORT={ropa:"How many processing activities and data transfers are recorded, and how many transfers leave India (Article 16).",ai_data:"How many AI models and agents can reach sensitive data, and how many of those also carry open misconfigurations (toxic combinations).",sf_overview:"Open cloud misconfigurations by severity and the Securiti posture score: the clearest measure of the security safeguards Article 8(5) requires.",sensitive:"Unmasked identifiers, ROT volume and open risks are the main drivers of breach exposure under Article 8(5), and of storage that should be erased under Article 8(7).",breach:"Breaches must be reported to the Board and to affected people (Article 8(6)); the Rules require a detailed report to the Board within 72 hours.",dprm:"Open and overdue DSRs show whether rights under Articles 11–14 are being honoured on time.",consent:"Consent quality (Article 6), children’s consent (Article 9) and SDF duties such as DPIAs (Article 10) in one view."};
+const PERS_TITLE={DPO:"DPO dashboard",CISO:"CISO dashboard",CIO:"CIO dashboard"};
+const secId=(p,i,j)=>`sec-${p}-${i}-${j}`;
+// "Article 11 · Article 12 · Schedule" -> "Article 11, 12 · Schedule"
+function artFmt(a){const parts=String(a).split(" · ").map(x=>x.trim()).filter(Boolean);const arts=[],rest=[];parts.forEach(x=>{const m=x.match(/^Articles? (.+)$/);if(m)arts.push(m[1]);else rest.push(x)});const u=arts.filter((v,i)=>arts.indexOf(v)===i);return [u.length?(u.length>1?"Articles ":"Article ")+u.join(", "):"",...rest.filter((v,i)=>rest.indexOf(v)===i)].filter(Boolean).join(" · ");}
+
+/* ================= Timeline ================= */
+const PHASES=[
+ {d:"2025-11-13",t:"Phase 1 · Immediate effect",items:["Data Protection Board set up and the framework goes live","Complaint handling and initial operational rules apply"]},
+ {d:"2026-11-13",t:"Phase 2 · One-year mark",items:["Consent Manager registration opens","Finish data mapping and consent infrastructure upgrades"]},
+ {d:"2027-05-13",t:"Phase 3 · Full compliance",items:["Notices, consent, data principal rights and 90-day grievance SLAs apply in full","One-year log retention and cross-border transfer rules apply","Board enforcement and penalties up to ₹250 crore begin"]}
+];
+function renderTimeline(){
+  const now=new Date();now.setHours(0,0,0,0);
+  const day=d=>new Date(d+"T00:00:00+05:30");
+  const diff=d=>Math.ceil((day(d)-now)/864e5);
+  const nextIdx=PHASES.findIndex(p=>diff(p.d)>0);
+  const fmtD=d=>day(d).toLocaleDateString("en-IN",{day:"numeric",month:"short",year:"numeric"});
+  const phases=PHASES.map((p,i)=>{const n=diff(p.d);const st=n<=0?"done":i===nextIdx?(i===2?"final":"next"):"later";
+    const badge=n<=0?pill("ok","In effect"):pill(i===nextIdx?"info":"mute",n+" days to go");
+    return `<div class="phase ${st}"><div class="when"><span>${fmtD(p.d)}</span>${badge}</div><h3>${esc(p.t)}</h3><ul>${p.items.map(x=>`<li>${esc(x)}</li>`).join("")}</ul></div>`}).join("");
+  const since=-diff(PHASES[0].d), nxt=nextIdx>=0?PHASES[nextIdx]:null, full=diff(PHASES[2].d);
+  const counters=[
+    nxt&&nextIdx<2?`<div class="counter"><span class="lbl">Days to ${esc(nxt.t.split("·")[1].trim())}</span><span class="big">${diff(nxt.d)} <small>days</small></span><span class="sub">${fmtD(nxt.d)}</span></div>`:"",
+    `<div class="counter final ${nxt&&nextIdx<2?"":"wide"}"><span class="lbl">Days to full compliance</span><span class="big">${Math.max(full,0)} <small>days</small></span><span class="sub">${full>0?fmtD(PHASES[2].d):"Full obligations in force"}</span></div>`,
+    `<div class="counter wide" style="background:var(--surface-2)"><span class="lbl">Days since the DPDP Rules took effect</span><span class="big" style="border-left-color:var(--ok)">${Math.max(since,0)} <small>days</small></span><span class="sub">Counted from ${fmtD(PHASES[0].d)} to today, ${now.toLocaleDateString("en-IN",{day:"numeric",month:"short",year:"numeric"})}</span></div>`
+  ].join("");
+  $("#timeline").innerHTML=`<div><div class="tl-head"><h2>DPDP implementation timeline</h2><span class="hint">Phased roll-out under the DPDP Rules, 2025</span></div><div class="tl-track">${phases}</div></div><div class="counters">${counters}</div>`;
+}
+
+/* ================= DPDPA article hyperlinks (official MeitY text, opened at the right page) ================= */
+const ACT_URL="https://www.meity.gov.in/static/uploads/2024/06/2bf1f0e9f04e6fb4f8fef35e82c42aa5.pdf";
+const ACT_PAGE={"4":4,"5":4,"6":5,"7":6,"8":7,"8(8)":8,"8(9)":8,"8(10)":8,"8(11)":8,"9":8,"10":8,"11":9,"12":10,"13":10,"14":10,"15":11,"16":11,"17":11,"33":16,"Schedule":21};
+const actHref=k=>ACT_URL+"#page="+(ACT_PAGE[k]??ACT_PAGE[String(k).split("(")[0]]??1);
+function linkArticles(root){
+  if(!root||!document.createTreeWalker)return;
+  const tw=document.createTreeWalker(root,NodeFilter.SHOW_TEXT,{acceptNode:n=>/Article|Schedule/.test(n.nodeValue)&&!n.parentElement.closest("a,script,style")?NodeFilter.FILTER_ACCEPT:NodeFilter.FILTER_REJECT});
+  const nodes=[];while(tw.nextNode())nodes.push(tw.currentNode);
+  const RE=/(Articles?\s+)(\d+(?:\(\d+\))?(?:–\(\d+\))?(?:\s*(?:,|and)\s*\d+(?:\(\d+\))?(?:–\(\d+\))?)*)|(Schedule)/g;
+  nodes.forEach(n=>{const t=n.nodeValue;let m,last=0,changed=false;const frag=document.createDocumentFragment();RE.lastIndex=0;
+    while((m=RE.exec(t))){changed=true;frag.appendChild(document.createTextNode(t.slice(last,m.index)));
+      if(m[3]){frag.appendChild(mk("Schedule","Schedule","Penalties under the DPDP Act Schedule"));}
+      else{frag.appendChild(document.createTextNode(m[1]));let l2=0;const list=m[2];const NR=/\d+(?:\(\d+\))?/g;let k;
+        while((k=NR.exec(list))){frag.appendChild(document.createTextNode(list.slice(l2,k.index)));const key=k[0];const prevDash=list.slice(Math.max(0,k.index-2),k.index).includes("–");
+          frag.appendChild(prevDash?document.createTextNode(key):mk(key,key,"DPDP Act, Article "+key+" (official text)"));l2=k.index+key.length;}
+        frag.appendChild(document.createTextNode(list.slice(l2)));}
+      last=m.index+m[0].length;}
+    if(changed){frag.appendChild(document.createTextNode(t.slice(last)));n.parentNode.replaceChild(frag,n);}});
+  function mk(key,text,title){const a=document.createElement("a");a.href=actHref(key);a.target="_blank";a.rel="noopener";a.className="artlink";a.title=title;a.textContent=text;return a;}
+}
+
+/* ================= Render ================= */
+let PERSONA="DPO";
+const WBY=Object.fromEntries(WIDGETS.map(w=>[w.id,w]));
+function ago(d){if(!d)return"";const s=(Date.now()-d.getTime())/1000;if(s<60)return"just now";if(s<3600)return Math.round(s/60)+" min ago";if(s<86400)return Math.round(s/3600)+" h ago";const n=Math.round(s/86400);return n+(n===1?" day ago":" days ago");}
+function card(w,M){
+  let body="",cls="card",sv="";
+  try{
+    if(w.kpi){const k=w.kpi(M);cls+=" kpi";
+      body=k?`<div class="kpibox s-${k.s}">${w.cap?`<span class="cap">${esc(w.cap)}</span>`:""}<span class="num">${esc(fmt(k.v))}${k.u?` <small>${esc(k.u)}</small>`:""}</span><span class="sub">${esc(k.sub||"")}</span></div>`
+            :`<div class="kpibox s-mute"><span class="cap">${esc(w.t)}</span><span class="num">—</span><span class="sub">Not in this export</span></div>`;}
+    else{const h=w.html(M);body=h||empty("Not in this export. Run the latest securiti_export.sh to include it.");}
+  }catch(e){body=`<div class="empty">Could not draw this widget: ${esc(e.message)}</div>`}
+  const span=w.kpi?KPI_W:Math.max(w.w,4);
+  return `<article class="${cls}" style="--w:${span}" data-id="${w.id}"><header><h4 title="${esc(w.t)}">${esc(w.t)}</h4><span class="ago">${ago(STAMP)}</span></header><div class="body">${body}</div></article>`;
+}
+function render(){
+  const M=metrics(); const P=LAYOUT[PERSONA];
+  $("#canvas").innerHTML=P.map((pri,i)=>`<section class="primary" aria-label="${esc(pri.title)}"><h2>${esc(pri.title)}${P.length>1||PERSONA!=="DPO"?` <span class="actchip">DPDPA ${esc(artFmt(pri.sections.map(s=>(s.act||ART[s.k].act)).join(" · ")))}</span>`:""}</h2>`+
+    pri.sections.map((s,j)=>{const a=ART[s.k];const info=PERSONA==="CIO"?`<b>${esc(s.label||a.t)}.</b> ${esc(SHORT[s.k]||"")}`:a.info;
+      return `<div class="section" id="${secId(PERSONA,i,j)}"><div class="sechead"><h3>${esc(s.label||a.t)}</h3><span class="actchip">DPDPA ${esc(artFmt(s.act||a.act))}</span></div><p class="article">${info}</p><div class="grid">${s.w.map(id=>WBY[id]?card(WBY[id],M):"").join("")}</div></div>`}).join("")+`</section>`).join("");
+  document.querySelectorAll("#persona button").forEach(b=>b.setAttribute("aria-pressed",b.dataset.p===PERSONA));
+  document.querySelectorAll(".rail [data-rp]").forEach(b=>b.setAttribute("aria-pressed",b.dataset.rp===PERSONA));
+  $("#persTitle").textContent=PERS_TITLE[PERSONA];
+  $("#srcTag").className="tag"+(SOURCE==="demo"?" demo":"");
+  $("#srcTag").textContent=SOURCE==="demo"?"Demo data":"From export file";
+  $("#stamp").textContent=STAMP?("Data as of "+STAMP.toLocaleString("en-IN",{dateStyle:"medium",timeStyle:"short"})):"";
+  renderNav();
+  linkArticles($("#canvas"));
+}
+function renderNav(){
+  $("#nav").innerHTML=["DPO","CISO","CIO"].map(p=>`<button class="navhead" data-nav="${p}" aria-current="${p===PERSONA}"><span class="chev">${p===PERSONA?"▼":"▶"}</span>${PERS_TITLE[p]}</button>`+
+    (p===PERSONA?LAYOUT[p].map((pri,i)=>(LAYOUT[p].length>1||p!=="DPO"?`<span class="navitem pri">${esc(pri.title)}</span>`:"")+pri.sections.map((s,j)=>`<button class="navitem${LAYOUT[p].length>1||p!=="DPO"?" sub":""}" data-jump="${secId(p,i,j)}">${esc(s.label||ART[s.k].t)}</button>`).join("")).join(""):"")).join("");
+}
+
+/* ================= Export loading ================= */
+async function loadFiles(files){
+  const raw={}; const add=(name,json)=>{
+    const q=Object.keys(QUERIES).find(k=>k===name)||Object.keys(ZIPMAP).find(k=>ZIPMAP[k].test(name));
+    if(!q||!json||json.status===1)return;
+    if(QUERIES[q]&&QUERIES[q].paged){raw[q]=raw[q]||{data:[]};raw[q].data=raw[q].data.concat(rowsOf(json));}else raw[q]=json;};
+  for(const f of files){
+    if(/\.zip$/i.test(f.name)){if(!window.JSZip)throw new Error("The zip reader needs internet access to load. Unzip the file and select the .json files instead.");
+      const z=await JSZip.loadAsync(f);for(const p of Object.keys(z.files)){if(!/\.json$/i.test(p))continue;const n=p.split("/").pop().replace(/\.json$/i,"");try{add(n,JSON.parse(await z.files[p].async("string")))}catch(e){}}}
+    else if(/\.json$/i.test(f.name)){try{add(f.name.replace(/\.json$/i,""),JSON.parse(await f.text()))}catch(e){}}
+  }
+  if(!Object.keys(raw).length)throw new Error("No Securiti export files found in that selection.");
+  RAW=raw;SOURCE="file";STAMP=new Date(Math.max(...[...files].map(f=>f.lastModified||Date.now())));
+  Object.keys(raw).forEach(k=>log("✓ "+k));
+  render();setStatus("ok","Loaded "+Object.keys(raw).length+" data sets from "+files[0].name+".");
+}
+
+/* ================= Widget JSON export ================= */
+function exportJson(){
+  const M=metrics();
+  const out={dashboard:"DPDPA Executive Dashboards",generated_at:new Date().toISOString(),data_source:SOURCE,data_as_of:STAMP?STAMP.toISOString():null,
+    act_reference:{url:ACT_URL,pages:ACT_PAGE},
+    timeline:PHASES.map(p=>({date:p.d,title:p.t,items:p.items})),
+    queries:Object.fromEntries(Object.entries(QUERIES).map(([k,q])=>[k,{method:q.method,path:q.path,keys:q.keys||"main",paging:q.paged||null,params:q.params||null,body:q.bodyFn?q.bodyFn():(q.body||null)}])),
+    dashboards:Object.fromEntries(Object.entries(LAYOUT).map(([p,pris])=>[p,pris.map(pri=>({section:pri.title,subsections:pri.sections.map(s=>({title:s.label||ART[s.k].t,dpdpa:artFmt(s.act||ART[s.k].act),summary:ART[s.k].info.replace(/<[^>]+>/g,""),widgets:s.w}))}))])),
+    widgets:WIDGETS.map(w=>{let v=null;try{v=w.kpi?w.kpi(M):null}catch(e){}return{id:w.id,title:w.t,type:w.kpi?"kpi":"chart",grid_span:w.kpi?KPI_W:w.w,depends_on:w.deps,value:v||undefined};})};
+  const blob=new Blob([JSON.stringify(out,null,2)],{type:"application/json"});
+  const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download="dpdpa_dashboards_"+new Date().toISOString().slice(0,10)+".json";document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},500);
+  log("Downloaded widget JSON");
+}
+
+/* ================= Events ================= */
+function setPersona(p){PERSONA=p;try{localStorage.setItem("dpdpa.persona",p)}catch(_){ }render();window.scrollTo({top:0});}
+function setPanel(open){$("#panel").classList.toggle("hidden",!open);$("#railPanel").setAttribute("aria-pressed",open);try{localStorage.setItem("dpdpa.panel",open?"1":"0")}catch(_){}}
+$("#persona").addEventListener("click",e=>{const b=e.target.closest("button");if(b)setPersona(b.dataset.p);});
+document.querySelectorAll(".rail [data-rp]").forEach(b=>b.addEventListener("click",()=>setPersona(b.dataset.rp)));
+$("#railPanel").addEventListener("click",()=>setPanel($("#panel").classList.contains("hidden")));
+$("#collapse").addEventListener("click",()=>setPanel(false));
+$("#nav").addEventListener("click",e=>{const h=e.target.closest("[data-nav]");if(h){setPersona(h.dataset.nav);return;}const j=e.target.closest("[data-jump]");if(j){const el=document.getElementById(j.dataset.jump);if(el)el.scrollIntoView({behavior:matchMedia("(prefers-reduced-motion: reduce)").matches?"auto":"smooth"});if(innerWidth<980)setPanel(false);}});
+$("#demo").addEventListener("click",()=>{RAW=demo();SOURCE="demo";STAMP=new Date();render();setStatus("","Showing demo data. Figures are fictional.");log("Loaded demo data");});
+$("#zip").addEventListener("change",async e=>{const fs=e.target.files;if(!fs.length)return;try{await loadFiles(fs)}catch(err){setStatus("err",err.message);log("✗ "+err.message)}e.target.value="";});
+$("#exportJson").addEventListener("click",exportJson);
+try{const per=localStorage.getItem("dpdpa.persona");if(per&&LAYOUT[per])PERSONA=per;const pn=localStorage.getItem("dpdpa.panel");if(pn==="0"||(pn===null&&innerWidth<980))setPanel(false);}catch(_){ if(innerWidth<980)setPanel(false);}
+
+renderTimeline();linkArticles($("#timeline"));
+RAW=demo();STAMP=new Date();render();
+})();
+</script>
+</body>
+</html>
