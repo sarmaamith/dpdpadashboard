@@ -146,11 +146,10 @@ svg text{fill:var(--muted);font-family:var(--f-mono);font-size:10px}
 .ri{color:inherit;background:transparent;border:1px solid currentColor}
 .hdr-r{display:flex;align-items:center;gap:10px;flex:0 0 auto}
 .needs{font-size:11.5px;font-weight:600;color:#fff;background:var(--crit);border-radius:999px;padding:2px 9px;cursor:help;white-space:nowrap}
-.needs::before{content:"! ";font-weight:800}
 .card.atrisk{border-color:#F0C3BD}
 .kpibox.risk{background:#FDF1EF;cursor:help}
 .kpibox.risk .num{border-left-color:var(--crit)}
-.kpibox.risk::after{content:"Action needed · hover for next steps";font-size:11.5px;color:#B8463A;font-weight:600;margin-top:4px}
+.kpibox.risk::after{content:"More Info · hover for next steps";font-size:11.5px;color:#B8463A;font-weight:600;margin-top:4px}
 .gpop{position:fixed;z-index:60;background:var(--surface);border:1px solid var(--line);border-left:4px solid var(--crit);border-radius:8px;box-shadow:0 10px 30px rgba(20,30,45,.18);padding:12px 14px;font-size:13px;color:var(--fg);max-height:70vh;overflow:auto}
 .gpop .gp-h{font-weight:700;color:#A8372C;display:flex;align-items:center;gap:8px;margin-bottom:6px}
 .gp-dot{width:8px;height:8px;border-radius:50%;background:var(--crit);flex:0 0 auto}
@@ -170,7 +169,7 @@ svg text{fill:var(--muted);font-family:var(--f-mono);font-size:10px}
     <button id="railPanel" title="Show or hide the dashboards panel" aria-label="Show or hide the dashboards panel" aria-pressed="true"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16"/></svg></button>
     <button data-rp="DPO" title="DPO dashboard" aria-label="DPO dashboard"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.5"/><path d="M5 20c1.2-3.6 4-5 7-5s5.8 1.4 7 5"/></svg></button>
     <button data-rp="CISO" title="CISO dashboard" aria-label="CISO dashboard"><svg viewBox="0 0 24 24"><path d="M12 3l7 3v6c0 4.4-3 7.6-7 9-4-1.4-7-4.6-7-9V6z"/></svg></button>
-    <button data-rp="CIO" title="CIO dashboard" aria-label="CIO dashboard"><svg viewBox="0 0 24 24"><rect x="4" y="12" width="3.5" height="8"/><rect x="10.25" y="7" width="3.5" height="13"/><rect x="16.5" y="3.5" width="3.5" height="16.5"/></svg></button>
+    <button data-rp="CIO" title="CIO/CTO dashboard" aria-label="CIO/CTO dashboard"><svg viewBox="0 0 24 24"><rect x="4" y="12" width="3.5" height="8"/><rect x="10.25" y="7" width="3.5" height="13"/><rect x="16.5" y="3.5" width="3.5" height="16.5"/></svg></button>
   </nav>
 
   <aside class="panel" id="panel" aria-label="Dashboards panel">
@@ -208,7 +207,7 @@ svg text{fill:var(--muted);font-family:var(--f-mono);font-size:10px}
       <div class="seg" role="group" aria-label="Dashboard" id="persona">
         <button data-p="DPO" aria-pressed="true">DPO</button>
         <button data-p="CISO" aria-pressed="false">CISO</button>
-        <button data-p="CIO" aria-pressed="false">CIO</button>
+        <button data-p="CIO" aria-pressed="false">CIO/CTO</button>
       </div>
     </div>
 
@@ -817,7 +816,7 @@ const LAYOUT={
 };
 // CIO keeps a short version of each article
 const SHORT={ropa:"How many processing activities and data transfers are recorded, and how many transfers leave India (Article 16).",ai_data:"How many AI models and agents can reach sensitive data, and how many of those also carry open misconfigurations (toxic combinations).",sf_overview:"Open cloud misconfigurations by severity and the Securiti posture score: the clearest measure of the security safeguards Article 8(5) requires.",sensitive:"Unmasked identifiers, ROT volume and open risks are the main drivers of breach exposure under Article 8(5), and of storage that should be erased under Article 8(7).",breach:"Breaches must be reported to the Board and to affected people (Article 8(6)); the Rules require a detailed report to the Board within 72 hours.",dprm:"Open and overdue DSRs show whether rights under Articles 11–14 are being honoured on time.",consent:"Consent quality (Article 6), children’s consent (Article 9) and SDF duties such as DPIAs (Article 10) in one view."};
-const PERS_TITLE={DPO:"DPO dashboard",CISO:"CISO dashboard",CIO:"CIO dashboard"};
+const PERS_TITLE={DPO:"DPO dashboard",CISO:"CISO dashboard",CIO:"CIO/CTO dashboard"};
 const secId=(p,i,j)=>`sec-${p}-${i}-${j}`;
 // "Article 11 · Article 12 · Schedule" -> "Article 11, 12 · Schedule"
 function artFmt(a){const parts=String(a).split(" · ").map(x=>x.trim()).filter(Boolean);const arts=[],rest=[];parts.forEach(x=>{const m=x.match(/^Articles? (.+)$/);if(m)arts.push(m[1]);else rest.push(x)});const u=arts.filter((v,i)=>arts.indexOf(v)===i);return [u.length?(u.length>1?"Articles ":"Article ")+u.join(", "):"",...rest.filter((v,i)=>rest.indexOf(v)===i)].filter(Boolean).join(" · ");}
@@ -919,7 +918,7 @@ const S_GUIDE={
  sf_overview:"sp_open",sf_where:"sp_open",sf_what:"sp_open",sf_tests:"ct_score",ai_inventory:"ai_models_sens",ai_data:"ai_models_sens",ai_toxic:"Yes",ai_posture:"ai_agents_vhh",
  breach:"h left",dprm:"dsr_open",consent:"consent_withdrawn",notice:"notice_langs",assess:"dpia_open",ropa:"g_tr_n"
 };
-const GENERIC={t:"Action needed",why:"This value indicates a risk to personal data or to compliance with the DPDP Act.",steps:["Open the item in Securiti and confirm the details","Assign an owner and a fix date","Track it until it is closed"]};
+const GENERIC={t:"More info",why:"This value indicates a risk to personal data or to compliance with the DPDP Act.",steps:["Open the item in Securiti and confirm the details","Assign an owner and a fix date","Track it until it is closed"]};
 let GCUR={w:null,s:null}; const GREG=[];
 function resolveGuide(key){for(let i=0;i<4&&key;i++){if(typeof key==="object")return key;
   if(W_GUIDE[key]!==undefined){key=W_GUIDE[key];continue}
@@ -962,7 +961,7 @@ function card(w,M,sk){
     else{const h=w.html(M);body=h||empty("Not in this export. Run the latest securiti_export.sh to include it.");}
   }catch(e){body=`<div class="empty">Could not draw this widget: ${esc(e.message)}</div>`}
   if(!w.kpi&&/ risk"|var\(--crit\)/.test(body))risk=true;
-  const badge=risk?`<span class="needs" tabindex="0" role="button" aria-label="Action needed: show next steps" data-g="${gid(resolveGuide(w.id)||resolveGuide(sk)||GENERIC)}">Action needed</span>`:"";
+  const badge=risk?`<span class="needs" tabindex="0" role="button" aria-label="More info: show next steps" data-g="${gid(resolveGuide(w.id)||resolveGuide(sk)||GENERIC)}">More Info</span>`:"";
   const span=w.kpi?KPI_W:Math.max(w.w,4);
   return `<article class="${cls}${risk?" atrisk":""}" style="--w:${span}" data-id="${w.id}"><header><h4 title="${esc(w.t)}">${esc(w.t)}</h4><span class="hdr-r">${badge}<span class="ago">${ago(STAMP)}</span></span></header><div class="body">${body}</div></article>`;
 }
